@@ -108,7 +108,10 @@ export function getBlockExplorerTxLink(chainId: number, txnHash: string) {
   }
 
   const targetChain = targetChainArr[0] as keyof typeof chains;
-  const blockExplorerTxURL = chains[targetChain]?.blockExplorers?.default?.url;
+
+  // Check for custom block explorer in scaffold config first
+  const customBlockExplorer = scaffoldConfig.blockExplorers?.[chainId];
+  const blockExplorerTxURL = customBlockExplorer?.url || chains[targetChain]?.blockExplorers?.default?.url;
 
   if (!blockExplorerTxURL) {
     return "";
@@ -122,7 +125,10 @@ export function getBlockExplorerTxLink(chainId: number, txnHash: string) {
  * Defaults to Etherscan if no (wagmi) block explorer is configured for the network.
  */
 export function getBlockExplorerAddressLink(network: chains.Chain, address: string) {
-  const blockExplorerBaseURL = network.blockExplorers?.default?.url;
+  // Check for custom block explorer in scaffold config first
+  const customBlockExplorer = scaffoldConfig.blockExplorers?.[network.id];
+  const blockExplorerBaseURL = customBlockExplorer?.url || network.blockExplorers?.default?.url;
+
   if (network.id === chains.hardhat.id) {
     return `/blockexplorer/address/${address}`;
   }
