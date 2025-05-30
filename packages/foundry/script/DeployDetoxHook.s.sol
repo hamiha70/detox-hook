@@ -7,11 +7,13 @@ import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { DetoxHook } from "../contracts/DetoxHook.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { HookMiner } from "@v4-periphery/src/utils/HookMiner.sol";
+import { ChainAddresses } from "./ChainAddresses.sol";
 
 /// @title DetoxHookDeployScript
 /// @notice Deployment script for DetoxHook with proper address mining
 /// @dev Handles CREATE2 deployment to ensure hook address has correct permission flags
 contract DeployDetoxHook is Script {
+    using ChainAddresses for uint256;
     
     // Hook flags for DetoxHook (beforeSwap + beforeSwapReturnDelta)
     uint160 constant HOOK_FLAGS = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
@@ -19,24 +21,13 @@ contract DeployDetoxHook is Script {
     // CREATE2 Deployer Proxy address (same across all chains)
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     
-    // Chain-specific Pool Manager addresses
-    mapping(uint256 => address) public poolManagers;
-    
     // Events for deployment tracking
     event DetoxHookDeployed(address indexed hook, address indexed poolManager, uint256 chainId, bytes32 salt);
     event DeploymentValidated(address indexed hook, bool beforeSwap, bool beforeSwapReturnDelta);
     event SaltMined(bytes32 salt, address expectedAddress, uint160 flags);
 
-    constructor() {
-        // Initialize Pool Manager addresses for different chains
-        // Add more chains as needed
-        poolManagers[31337] = address(0); // Anvil - will be deployed fresh
-        // poolManagers[421614] = 0x...; // Arbitrum Sepolia - add when known
-        // poolManagers[1] = 0x...; // Mainnet - add when known
-    }
-
     /// @notice Main deployment function
-    function run() external {
+    function run() external virtual {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
         
@@ -49,6 +40,7 @@ contract DeployDetoxHook is Script {
         console.log("DetoxHook deployed at:", address(hook));
         console.log("Chain ID:", block.chainid);
         console.log("Pool Manager:", poolManager);
+        console.log("Block Explorer:", ChainAddresses.getBlockExplorer(block.chainid));
     }
 
     /// @notice Deploy DetoxHook with address mining and comprehensive logging
@@ -59,8 +51,14 @@ contract DeployDetoxHook is Script {
 
         console.log("=== DetoxHook Deployment ===");
         console.log("Chain ID:", block.chainid);
+        console.log("Chain Name:", ChainAddresses.getChainName(block.chainid));
         console.log("Pool Manager:", poolManager);
         console.log("Deployer:", msg.sender);
+
+        // Validate chain addresses before deployment
+        if (block.chainid != ChainAddresses.LOCAL_ANVIL) {
+            ChainAddresses.validateChainAddresses(block.chainid);
+        }
 
         // Mine the correct salt for hook address
         bytes32 salt = mineHookSalt(poolManager);
@@ -86,9 +84,15 @@ contract DeployDetoxHook is Script {
 
         console.log("=== DetoxHook Deterministic Deployment ===");
         console.log("Chain ID:", block.chainid);
+        console.log("Chain Name:", ChainAddresses.getChainName(block.chainid));
         console.log("Pool Manager:", poolManager);
         console.log("Salt:", vm.toString(salt));
         console.log("Deployer:", msg.sender);
+
+        // Validate chain addresses before deployment
+        if (block.chainid != ChainAddresses.LOCAL_ANVIL) {
+            ChainAddresses.validateChainAddresses(block.chainid);
+        }
 
         // Deploy the hook using CREATE2
         hook = deployDetoxHookWithSalt(poolManager, salt);
@@ -215,27 +219,25 @@ contract DeployDetoxHook is Script {
     function logDeploymentSummary(DetoxHook hook) public view {
         console.log("=== Deployment Summary ===");
         console.log("Contract Address:", address(hook));
-        console.log("Chain ID:", block.chainid);
+        console.log("Chain:", ChainAddresses.getChainName(block.chainid));
+        console.log("Block Explorer:", ChainAddresses.getBlockExplorer(block.chainid));
         console.log("Pool Manager:", address(hook.poolManager()));
         console.log("Hook Flags:", uint160(address(hook)) & HookMiner.FLAG_MASK);
+        
+        // Log additional chain info for non-local chains
+        if (block.chainid != ChainAddresses.LOCAL_ANVIL) {
+            console.log("Pyth Oracle:", ChainAddresses.getPythOracle(block.chainid));
+            console.log("USDC Token:", ChainAddresses.getUSDC(block.chainid));
+            console.log("Universal Router:", ChainAddresses.getUniversalRouter(block.chainid));
+        }
+        
         console.log("=== Deployment Complete ===");
     }
 
     /// @notice Get the Pool Manager address for the current chain
     /// @return The Pool Manager address
     function getPoolManagerAddress() public view returns (address) {
-        address poolManager = poolManagers[block.chainid];
-        
-        if (poolManager == address(0)) {
-            // For local development, you might want to deploy a fresh PoolManager
-            // or use a known test address
-            if (block.chainid == 31337) { // Anvil
-                revert("Pool Manager not set for Anvil. Deploy PoolManager first or set address.");
-            }
-            revert("Pool Manager address not configured for this chain");
-        }
-        
-        return poolManager;
+        return ChainAddresses.getPoolManager(block.chainid);
     }
 
     /// @notice Set Pool Manager address for a specific chain (only for testing)
@@ -243,8 +245,11 @@ contract DeployDetoxHook is Script {
     /// @param poolManager The Pool Manager address
     function setPoolManagerAddress(uint256 chainId, address poolManager) external {
         require(msg.sender == tx.origin, "Only EOA can set addresses");
-        poolManagers[chainId] = poolManager;
-        console.log("Pool Manager set for chain", chainId, ":", poolManager);
+        require(chainId == ChainAddresses.LOCAL_ANVIL, "Can only set address for local testing");
+        
+        // This is a workaround for local testing since we can't modify the library
+        console.log("Note: For local testing, deploy PoolManager first and update ChainAddresses.sol");
+        console.log("Pool Manager for chain", chainId, "should be:", poolManager);
     }
 
     /// @notice Generate a deterministic salt for CREATE2 deployment
@@ -265,5 +270,17 @@ contract DeployDetoxHook is Script {
         bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
         
         return HookMiner.computeAddress(CREATE2_DEPLOYER, uint256(salt), creationCodeWithArgs);
+    }
+
+    /// @notice Check if the current chain is supported
+    /// @dev Reverts if the chain is not supported
+    function requireSupportedChain() public view {
+        require(ChainAddresses.isChainSupported(block.chainid), "Unsupported chain");
+    }
+
+    /// @notice Get all V4 addresses for the current chain
+    /// @return addresses Struct containing all V4 contract addresses
+    function getAllV4Addresses() public view returns (ChainAddresses.V4Addresses memory) {
+        return ChainAddresses.getAllAddresses(block.chainid);
     }
 } 
