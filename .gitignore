@@ -1,5 +1,9 @@
 # dependencies
 node_modules
+.env
+packages/foundry/out
+packages/foundry/lib
+packages/foundry/cache
 
 # yarn
 .yarn/*
