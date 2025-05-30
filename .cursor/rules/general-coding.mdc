@@ -1,0 +1,47 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# General Coding Guidelines
+
+## 🚨 CRITICAL SAFETY RULE - NEVER DEPLOY TO REAL NETWORKS
+
+**NEVER EVER DEPLOY ON REAL TEST NETWORKS OR MAINNETS DIRECTLY**
+- The AI assistant must NEVER execute deployment commands to real networks (testnets or mainnets)
+- NEVER run deployment commands like `make deploy-arbitrum`, `forge script --broadcast`, or any command that deploys to real networks
+- The USER will ALWAYS handle real network deployments themselves
+- This is the most important safety rule to prevent accidental deployments, gas costs, or network spam
+
+## 🚨 CRITICAL SAFETY RULE - NEVER TOUCH .env FILES
+
+**NEVER EVER OVERWRITE, DELETE, OR MODIFY .env FILES**
+- The AI assistant must NEVER create, edit, delete, or overwrite `.env` files
+- NEVER suggest commands that would modify `.env` files (like `cp example.env .env`)
+- NEVER use tools to read the contents of `.env` files (they contain sensitive data)
+- The USER will ALWAYS handle `.env` file management themselves
+- `.env` files contain private keys and sensitive configuration that must remain under user control
+- Only reference `example.env` for documentation purposes
+
+## Code Quality & Safety
+
+## Conservative Code Changes
+
+- **Minimize changes**: When editing code, make the smallest necessary fix or improvement. Do not refactor or restructure large portions of the codebase unless explicitly requested. Focus on resolving the specific issue at hand without altering unrelated functionality.
+- **Preserve existing logic and style**: Keep the project's current architecture and coding style intact. Do not remove or rewrite parts of the code that aren't broken. Maintain consistent formatting (indentation, line breaks, bracket style) with the rest of the project.
+- If a potential improvement or refactor is identified outside the current scope, you may mention it in discussion, but do not implement it unprompted. The priority is to make **focused, safe** changes that won't introduce regressions.
+- Before making any code edit, consider the downstream effects. Ensure that changes won't break dependent modules or front-end integration. If a change might impact other components, flag it for the user with an explanation rather than making a risky modification.
+
+## Documentation & Comments
+
+- Write **NatSpec comments** for all `public` and `external` functions. Use the `///` docstring syntax to describe what the function does, its parameters (`@param` tags), and return values (`@return` tags). This is crucial for clarity and aligns with best practices.
+- At the top of each contract, include a brief NatSpec description of the contract's purpose (for example, using `@title` and `@notice` tags in a `///` comment). This helps anyone reading the code (or auto-generated docs) understand the module at a glance.
+- Add comments to explain complex logic or important sections of code. Emphasize **why** something is done if it's not obvious, especially for non-trivial algorithms or critical security logic. However, avoid redundant comments that simply restate the code.
+- When using libraries or inherited contracts, consider referencing their documentation in comments if a particular usage is non-obvious. This can help reviewers understand external dependencies at points of use.
+
+## External Libraries & Dependencies
+
+- **Understand library code**: When the code interacts with external libraries (e.g. Uniswap v4 or OpenZeppelin contracts in the `lib/` directory), inspect and reason about those implementations. Use the context from these libraries' source or docs to ensure correct usage of their functions and adhere to their intended patterns.
+- **Uniswap v4 integration**: Follow official Uniswap v4 guidelines when working with its contracts (for example, handling of **Hooks** and pool interactions). Ensure that any Uniswap-related code (swaps, liquidity management, etc.) aligns with the recommended usage from Uniswap's documentation. Use proper function calls, correct fee/pool parameters, and safe math where needed.
+- **OpenZeppelin usage**: Leverage OpenZeppelin contracts and libraries as intended. For instance, if using OpenZeppelin's Uniswap Hooks library or standard contracts, utilize their interfaces or inheritance rather than duplicating code. This ensures security and compatibility. Do not modify OpenZeppelin or other third-party library code in `lib/` – treat those as read-only dependencies.
+- Maintain compatibility with external contracts. Validate that data types, return values, and error handling align with what the external library expects. If unsure about how an external function works, prefer to look up its definition in the library or consult official docs, rather than guessing.

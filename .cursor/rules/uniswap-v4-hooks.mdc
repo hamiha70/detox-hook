@@ -1,0 +1,67 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Uniswap V4 Hook Development
+
+## Hook Fee/Token Extraction Pattern
+
+- **ALWAYS use both `poolManager.take()` AND `BeforeSwapDelta` together** when a hook needs to extract tokens from exact input swaps
+- `poolManager.take()` physically transfers tokens to the hook
+- `BeforeSwapDelta` reduces the swap amount to maintain accounting balance
+- Using only one mechanism will cause `CurrencyNotSettled` errors
+
+## BeforeSwapDelta Usage
+
+- Use `toBeforeSwapDelta(int128(amount), 0)` to reduce currency0 (when zeroForOne = true)
+- Use `toBeforeSwapDelta(0, int128(amount))` to reduce currency1 (when zeroForOne = false)
+- Always cast amounts to `int128` and ensure they fit within the type bounds
+- Return `toBeforeSwapDelta(0, 0)` when no modification is needed (e.g., exact output swaps)
+
+## Hook Permissions
+
+- Set `beforeSwap: true` when implementing `_beforeSwap`
+- Set `beforeSwapReturnDelta: true` when returning non-zero `BeforeSwapDelta`
+- Only enable permissions that are actually used to minimize gas costs
+- Hook addresses must have specific bits set corresponding to hook permissions
+- Use CREATE2 deployment with mined salt to achieve required address patterns
+
+## Exact Input vs Exact Output
+
+- Exact input swaps: `params.amountSpecified < 0` (negative)
+- Exact output swaps: `params.amountSpecified > 0` (positive)
+- Hooks should typically only modify exact input swaps unless specifically designed otherwise
+- Always check the sign of `amountSpecified` before applying hook logic
+
+## Currency Handling
+
+- Use `params.zeroForOne` to determine swap direction
+- Input currency: `params.zeroForOne ? key.currency0 : key.currency1`
+- Output currency: `params.zeroForOne ? key.currency1 : key.currency0`
+- Always handle both swap directions in hook logic
+- Use `Currency.wrap()` and `Currency.unwrap()` for address conversions
+
+## Error Prevention
+
+- Never call `poolManager.take()` without corresponding accounting adjustments
+- Always validate that amounts fit within `int128` bounds before casting
+- Handle edge cases like zero amounts or very small amounts
+- Ensure hook logic doesn't break pool invariants
+- Validate pool keys and ensure currencies are properly ordered
+
+## Pool Interaction Patterns
+
+- Use `key.toId()` to get the PoolId for mappings and tracking
+- Cache PoolId when used multiple times in the same function
+- Emit events for important hook actions for off-chain tracking
+- Use `poolManager.settle()` and `poolManager.take()` for token movements
+- Always handle both directions of swaps (zeroForOne true/false)
+
+## Hook Address Requirements
+
+- Hook addresses must match the required permission flags in their ending bits
+- Use HookMiner or similar tools to find valid addresses
+- Deploy hooks using CREATE2 with the mined salt
+- Cannot use simple deployment helpers like `Deployers.sol` for production hooks
+- For SyncroHook: requires `BEFORE_SWAP_FLAG | BEFORE_SWAP_RETURNS_DELTA_FLAG = 136`

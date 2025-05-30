@@ -1,0 +1,115 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Foundry-Specific Rules
+
+## 🚨 CRITICAL SAFETY RULE - NEVER DEPLOY TO REAL NETWORKS
+
+**NEVER EVER DEPLOY ON REAL TEST NETWORKS OR MAINNETS DIRECTLY**
+- The AI assistant must NEVER execute deployment commands to real networks (testnets or mainnets)
+- NEVER run `make deploy-arbitrum`, `forge script --broadcast`, or any command that deploys to real networks
+- NEVER run commands with `--rpc-url` pointing to real network endpoints like Arbitrum Sepolia, Ethereum mainnet, etc.
+- The USER will ALWAYS handle real network deployments themselves
+- This is the most important safety rule to prevent accidental deployments, gas costs, or network spam
+
+## Foundry Configuration & Build System
+
+- **NEVER use comments in remappings.txt**: The `remappings.txt` file does not support comments. Any line starting with `#` or `//` will be treated as a mapping path, causing compilation errors.
+- **Use forge-std for testing**: Always import from `forge-std` for testing utilities (`Test.sol`, `console.sol`, etc.)
+- **Proper import paths**: Use `@openzeppelin/contracts` and other standard library prefixes in imports
+- **Build before testing**: Always run `forge build` before running tests to ensure all dependencies are compiled
+
+## FFI (Foreign Function Interface) Best Practices
+
+### Binary Data Handling with vm.parseBytes()
+
+When using FFI to fetch binary data (like Pyth VAA data) that needs to be parsed with `vm.parseBytes()`, follow these critical patterns:
+
+#### ❌ WRONG - Using xxd produces Unicode characters
+```bash
+# This produces binary data with Unicode that vm.parseBytes() cannot handle
+curl -s 'https://api.example.com/data' | jq -r '.[0]' | base64 -d | xxd -p -c 0 | sed 's/^/0x/'
+```
+
+#### ✅ CORRECT - Using od produces clean hex
+```bash
+# This produces clean hex string that vm.parseBytes() can handle
+curl -s 'https://api.example.com/data' | jq -r '.[0]' | base64 -d | od -An -tx1 | tr -d ' \n' | sed 's/^/0x/'
+```
+
+#### Key Differences:
+- **xxd -p**: Can produce Unicode characters in output that cause `vm.parseBytes()` to fail with "expected hex digits" error
+- **od -An -tx1**: Produces pure ASCII hex output, one byte per line
+- **tr -d ' \n'**: Removes spaces and newlines to create continuous hex string
+- **sed 's/^/0x/'**: Adds required `0x` prefix for Solidity parsing
+
+### FFI Error Patterns
+
+#### Common vm.parseBytes() Errors:
+```
+vm.parseBytes: failed parsing "PNAU..." as type `bytes`: parser error:
+parse error at line 1, column 1
+  |
+Bŋ}q:ZP:[&d)}^n_F߉f␦˳쪸:}
+  | ^
+expected hex digits or the `0x` prefix for an empty hex string
+```
+
+This error indicates binary data with Unicode characters. Solution: Use `od` instead of `xxd`.
+
+#### Debugging FFI Output:
+```solidity
+// Always log the first part of hex data to verify format
+string memory hexData = string(vm.ffi(ffiArgs));
+console.log("Hex length:", bytes(hexData).length);
+console.log("First 100 chars:", /* first 100 chars of hexData */);
+
+// Verify it starts with 0x and contains only hex characters
+require(bytes(hexData).length > 2, "Hex data too short");
+require(bytes(hexData)[0] == '0' && bytes(hexData)[1] == 'x', "Missing 0x prefix");
+```
+
+### FFI Security and Configuration
+
+- **Enable FFI in foundry.toml**: Add `ffi = true` to `[profile.default]` section
+- **Use FFI sparingly**: Only for essential external data fetching, not for general computation
+- **Validate FFI output**: Always check the format and content of FFI results before using
+- **Handle FFI failures**: Wrap FFI calls in try-catch or check for empty/invalid results
+
+### Compilation Cache Issues
+
+- **Force rebuild after FFI changes**: Run `forge clean && forge build` if FFI commands seem cached
+- **Check trace output**: The Foundry trace shows the actual FFI command executed, which may differ from source code if cached
+- **Clear cache for script changes**: Script compilation cache can persist old FFI commands
+
+## Testing Patterns
+
+- **Use descriptive test names**: `test_CanDepositWhenPoolIsActive()` instead of `testDeposit()`
+- **Group related tests**: Use `contract TestContractName` for each contract being tested
+- **Setup and teardown**: Use `setUp()` for common test initialization
+- **Use vm.expectRevert()**: For testing error conditions with specific error messages
+- **Test edge cases**: Always test boundary conditions, zero values, and maximum values
+
+## Gas Optimization in Tests
+
+- **Use vm.deal()**: Set ETH balances for test accounts instead of complex funding logic
+- **Use vm.prank()**: Change `msg.sender` for single calls instead of `vm.startPrank()/vm.stopPrank()`
+- **Cache storage reads**: Store frequently accessed state variables in memory during tests
+- **Use vm.skip()**: Skip time-dependent tests when not relevant to current test focus
+
+## Debugging and Logging
+
+- **Use console.log() sparingly**: Limit to 3 parameters maximum to avoid compilation errors
+- **Prefer console.log() over emit**: For debugging, console.log is simpler than events
+- **Use descriptive prefixes**: `[ERROR]`, `[SUCCESS]`, `[INFO]` for log categorization
+- **Log important state changes**: Before and after values for critical operations
+
+## Script Best Practices
+
+- **Use vm.startBroadcast()**: For deployment scripts that need to send transactions
+- **Handle script failures gracefully**: Use try-catch blocks for external calls
+- **Validate environment**: Check chain ID, contract addresses, and balances before execution
+- **Use immutable addresses**: Define contract addresses as constants for specific chains
+- **Document script purpose**: Clear comments explaining what each script does and when to use it

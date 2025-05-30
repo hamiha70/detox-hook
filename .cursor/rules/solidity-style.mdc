@@ -1,0 +1,40 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Solidity-Specific Rules
+
+## Code Style & Layout
+
+- Follow the standard Solidity contract layout. Begin files with the pragma and imports, then any global definitions (errors, interfaces, libraries). Inside each contract, organize code in sections: state variables, events, modifiers, and then functions.
+- Order functions by their type/visibility: constructor first, then fallback/receive (if present), followed by external functions, public functions, internal, and private. Within each visibility group, place view and pure functions after non-view functions for clarity.
+- Use consistent naming conventions. Contracts and libraries in **PascalCase**, functions and variables in **camelCase**, constants in ALL_CAPS. Choose descriptive names that convey intent.
+- Always explicitly specify visibility (`public`, `private`, `internal`, or `external`) for functions and state variables, as well as mutability modifiers (`view`, `pure`, or `payable`) when applicable. This improves clarity and is part of the style guide.
+
+## Security & Best Practices
+
+- **Security first**: Always apply known Solidity security patterns. For instance, use **checks-effects-interactions** pattern when making external calls (update state before calling external contracts), consider using `ReentrancyGuard` (or the `nonReentrant` modifier) when needed to prevent reentrant calls, and validate inputs and conditions with `require` statements at function entry.
+- Use **custom errors** (`error ErrorName()` with revert) instead of revert strings where appropriate to save gas and improve clarity. Continue using require/assert as needed, but favor emitting custom error types for external-facing reverts.
+- Emit events for critical state changes (e.g. when funds are transferred, when important parameters are updated, etc.) to facilitate off-chain tracking. Ensure event names are concise and follow past-tense convention (e.g. `TokenMinted` event after minting).
+- Mark variables `constant` or `immutable` when possible (for configuration values, addresses, etc.) to optimize gas and signal intent. Likewise, use proper data types (e.g. `uint256` vs `uint8`) balancing gas efficiency with clarity. Favor using `memory` and `calldata` for function parameters as appropriate to avoid unnecessary gas costs.
+- **Simplicity and clarity**: Write code that is easy to read and maintain. Break down complex logic into smaller, private/internal functions if it improves understanding. Avoid deep nested loops or conditionals that hurt readability. Clear and straightforward code is preferred over clever but opaque solutions.
+- Regularly cross-check against Solidity's latest best practices and community guidelines. As the language and libraries evolve, be ready to update these rules (and the codebase) to incorporate new security recommendations or style improvements.
+
+## Gas Optimization
+
+- Cache frequently used values (e.g., storage reads, external calls)
+- Use `immutable` for constants that don't change after deployment
+- Minimize external calls and storage operations in hot paths
+- Consider using events for off-chain tracking instead of storage when possible
+- Use appropriate data types - don't use `uint256` when `uint128` or smaller would suffice
+- Pack struct variables efficiently to minimize storage slots
+- Use `unchecked` blocks for arithmetic operations where overflow is impossible or handled elsewhere
+
+## Foundry Script Best Practices
+
+- **Use only pure ASCII characters** in Foundry scripts - no Unicode, emojis, or special characters
+- **Limit console.log parameters** to maximum 3 parameters to avoid compilation errors
+- Break complex log statements into multiple calls: `console.log("Value:", value); console.log("Status:", status);`
+- Use descriptive prefixes for log levels: `[ERROR]`, `[SUCCESS]`, `[WARNING]`, `[INFO]`
+- Prefer simple string concatenation over complex formatting in logs
