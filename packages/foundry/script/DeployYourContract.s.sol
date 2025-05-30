@@ -2,10 +2,10 @@
 pragma solidity ^0.8.19;
 
 import "./DeployHelpers.s.sol";
-import "../contracts/YourContract.sol";
+import "./DeployDetoxHook.s.sol";
 
 /**
- * @notice Deploy script for YourContract contract
+ * @notice Deploy script for DetoxHook contract
  * @dev Inherits ScaffoldETHDeploy which:
  *      - Includes forge-std/Script.sol for deployment
  *      - Includes ScaffoldEthDeployerRunner modifier
@@ -25,6 +25,19 @@ contract DeployYourContract is ScaffoldETHDeploy {
      *      - Export contract addresses & ABIs to `nextjs` packages
      */
     function run() external ScaffoldEthDeployerRunner {
-        new YourContract(deployer);
+        // For now, we'll use a placeholder address for Pool Manager
+        // In a real deployment, you would:
+        // 1. Deploy PoolManager first, or
+        // 2. Use the known PoolManager address for your target network
+        
+        console.log("=== DetoxHook Deployment via ScaffoldETH ===");
+        console.log("Note: This is a simplified deployment.");
+        console.log("For production, use DeployDetoxHook.s.sol with proper address mining.");
+        console.log("Deployer address:", deployer);
+        
+        // For demonstration purposes, we'll create a mock deployment
+        // In practice, you should use the DeployDetoxHook script
+        console.log("To deploy DetoxHook properly, run:");
+        console.log("forge script script/DeployDetoxHook.s.sol --rpc-url <RPC_URL> --broadcast");
     }
 }

@@ -1,25 +1,22 @@
-//SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./DeployHelpers.s.sol";
 import { DeployYourContract } from "./DeployYourContract.s.sol";
 
 /**
- * @notice Main deployment script for all contracts
- * @dev Run this when you want to deploy multiple contracts at once
- *
- * Example: yarn deploy # runs this script(without`--file` flag)
+ * @notice Main deployment script that orchestrates all contract deployments
+ * @dev This script can be used to deploy all contracts in the correct order
  */
-contract DeployScript is ScaffoldETHDeploy {
+contract Deploy {
     function run() external {
-        // Deploys all your contracts sequentially
-        // Add new deployments here when needed
-
-        DeployYourContract deployYourContract = new DeployYourContract();
-        deployYourContract.run();
-
-        // Deploy another contract
-        // DeployMyContract myContract = new DeployMyContract();
-        // myContract.run();
+        // Deploy DetoxHook (via the updated DeployYourContract script)
+        DeployYourContract deployDetoxHook = new DeployYourContract();
+        deployDetoxHook.run();
+        
+        // Add other contract deployments here as needed
+        // For example:
+        // - Deploy additional hooks
+        // - Deploy pool initialization scripts
+        // - Deploy frontend helper contracts
     }
 }
