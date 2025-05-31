@@ -14,6 +14,7 @@
     "flatten": "make flatten",
     "fork": "make fork FORK_URL=${1:-mainnet}",
     "format": "make format",
+    "generate": "node scripts-js/generateTsAbis.js",
     "postinstall": "shx cp -n .env.example .env",
     "lint": "make lint",
     "test": "forge test",

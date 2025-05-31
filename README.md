@@ -1,9 +1,44 @@
-# 🏗 Scaffold-ETH 2
+# 🏗 Scaffold-ETH 2 + DetoxHook
 
 <h4 align="center">
   <a href="https://docs.scaffoldeth.io">Documentation</a> |
-  <a href="https://scaffoldeth.io">Website</a>
+  <a href="https://scaffoldeth.io">Website</a> |
+  <a href="./DEVELOPMENT.md">DetoxHook Development Guide</a> |
+  <a href="./QUICK_REFERENCE.md">Quick Reference</a>
 </h4>
+
+## 🦄 DetoxHook - Uniswap V4 MEV Protection
+
+This project implements **DetoxHook**, a Uniswap V4 hook designed to detect and capture MEV (Maximum Extractable Value) for redistribution to liquidity providers. Built for ETHGlobal hackathon.
+
+### 🚀 Quick Start for DetoxHook
+
+```bash
+# Start development
+yarn dev
+
+# Run tests
+yarn test:detox
+
+# Deploy to Arbitrum Sepolia
+yarn deploy:arbitrum
+
+# Generate contracts for frontend
+yarn generate:contracts
+```
+
+**📖 [Full Development Guide](./DEVELOPMENT.md)** - Complete commands and workflows
+
+### ✨ Features
+
+- 🎯 **MEV Detection**: Identifies arbitrage opportunities in real-time
+- 🛡️ **MEV Capture**: Captures value before external arbitrageurs
+- 💰 **LP Rewards**: Redistributes captured value to liquidity providers
+- 🔧 **HookMiner Integration**: Proper CREATE2 deployment with permission flags
+- 🌐 **Arbitrum Sepolia**: Deployed and tested on testnet
+- 🧪 **Comprehensive Testing**: 37/37 tests passing with fork testing
+
+---
 
 🧪 An open-source, up-to-date toolkit for building decentralized applications (dapps) on the Ethereum blockchain. It's designed to make it easier for developers to create and deploy smart contracts and build user interfaces that interact with those contracts.
 

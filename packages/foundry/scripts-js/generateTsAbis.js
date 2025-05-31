@@ -68,7 +68,7 @@ function getDeploymentHistory(broadcastPath) {
     const transactions = parseTransactionRun(join(broadcastPath, file));
 
     for (const tx of transactions) {
-      if (tx.transactionType === "CREATE") {
+      if (tx.transactionType === "CREATE" || tx.transactionType === "CREATE2") {
         // Store or update contract deployment info
         deploymentHistory.set(tx.contractAddress, {
           contractName: tx.contractName,
@@ -139,15 +139,26 @@ function processAllDeployments(broadcastPath) {
   const scriptFolders = getDirectories(broadcastPath);
   const allDeployments = new Map();
 
+  console.log("🔍 Processing deployments from:", broadcastPath);
+  console.log("📁 Script folders found:", scriptFolders);
+
   scriptFolders.forEach((scriptFolder) => {
     const scriptPath = join(broadcastPath, scriptFolder);
     const chainFolders = getDirectories(scriptPath);
+    
+    console.log(`📂 Processing script: ${scriptFolder}`);
+    console.log(`🔗 Chain folders found:`, chainFolders);
 
     chainFolders.forEach((chainId) => {
       const chainPath = join(scriptPath, chainId);
       const deploymentHistory = getDeploymentHistory(chainPath);
-
+      
+      console.log(`⛓️  Processing chain: ${chainId}`);
+      console.log(`📋 Deployments found:`, deploymentHistory.length);
+      
       deploymentHistory.forEach((deployment) => {
+        console.log(`🚀 Found deployment:`, deployment.contractName, "at", deployment.address);
+        
         const timestamp = parseInt(
           deployment.deploymentFile.match(/run-(\d+)/)?.[1] || "0"
         );
@@ -169,11 +180,16 @@ function processAllDeployments(broadcastPath) {
     });
   });
 
+  console.log("🗺️  All deployments map:", Array.from(allDeployments.entries()));
+
   const allContracts = {};
 
   allDeployments.forEach((deployment) => {
     const { chainId, contractName } = deployment;
+    console.log(`🔧 Processing deployment: ${contractName} on chain ${chainId}`);
+    
     const artifact = getArtifactOfContract(contractName);
+    console.log(`📄 Artifact found for ${contractName}:`, !!artifact);
 
     if (artifact) {
       if (!allContracts[chainId]) {
@@ -187,9 +203,12 @@ function processAllDeployments(broadcastPath) {
         deploymentFile: deployment.deploymentFile,
         deploymentScript: deployment.deploymentScript,
       };
+      
+      console.log(`✅ Added contract ${contractName} to chain ${chainId}`);
     }
   });
 
+  console.log("🎯 Final contracts object:", Object.keys(allContracts));
   return allContracts;
 }
 
@@ -199,6 +218,8 @@ function main() {
 
   const Deploymentchains = getFiles(current_path_to_deployments);
   const deployments = {};
+
+  console.log("📁 Deployment files found:", Deploymentchains);
 
   // Load existing deployments from deployments directory
   Deploymentchains.forEach((chain) => {
@@ -210,22 +231,30 @@ function main() {
     deployments[chain] = deploymentObject;
   });
 
+  console.log("📋 Loaded deployments:", deployments);
+
   // Process all deployments from all script folders
   const allGeneratedContracts = processAllDeployments(
     current_path_to_broadcast
   );
 
+  console.log("🏗️  All generated contracts before processing:", allGeneratedContracts);
+
   // Update contract keys based on deployments if they exist
   Object.entries(allGeneratedContracts).forEach(([chainId, contracts]) => {
     Object.entries(contracts).forEach(([contractName, contractData]) => {
       const deployedName = deployments[chainId]?.[contractData.address];
+      console.log(`🔍 Checking deployment name for ${contractName} at ${contractData.address}: ${deployedName}`);
       if (deployedName) {
         // If we have a deployment name, use it instead of the contract name
         allGeneratedContracts[chainId][deployedName] = contractData;
         delete allGeneratedContracts[chainId][contractName];
+        console.log(`🔄 Renamed ${contractName} to ${deployedName}`);
       }
     });
   });
+
+  console.log("🏗️  All generated contracts after processing:", allGeneratedContracts);
 
   const NEXTJS_TARGET_DIR = "../nextjs/contracts/";
 
@@ -237,6 +266,7 @@ function main() {
   // Generate the deployedContracts content
   const fileContent = Object.entries(allGeneratedContracts).reduce(
     (content, [chainId, chainConfig]) => {
+      console.log(`📝 Adding chain ${chainId} with contracts:`, Object.keys(chainConfig));
       return `${content}${parseInt(chainId).toFixed(0)}:${JSON.stringify(
         chainConfig,
         null,
@@ -245,6 +275,9 @@ function main() {
     },
     ""
   );
+
+  console.log("📄 Generated file content length:", fileContent.length);
+  console.log("📄 Generated file content preview:", fileContent.substring(0, 200));
 
   // Write the files
   const fileTemplate = (importPath) => `
@@ -256,11 +289,15 @@ function main() {
     export default deployedContracts satisfies GenericContractsDeclaration;
   `;
 
+  const finalContent = format(fileTemplate("~~/utils/scaffold-eth/contract"), {
+    parser: "typescript",
+  });
+
+  console.log("📄 Final formatted content length:", finalContent.length);
+
   writeFileSync(
     `${NEXTJS_TARGET_DIR}deployedContracts.ts`,
-    format(fileTemplate("~~/utils/scaffold-eth/contract"), {
-      parser: "typescript",
-    })
+    finalContent
   );
 
   console.log(
