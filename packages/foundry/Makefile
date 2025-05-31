@@ -58,6 +58,44 @@ update-frontend-address:
 # Deploy and generate ABIs
 deploy-and-generate-abis: deploy generate-abis
 
+# Deploy DetoxHook Complete (all-in-one deployment)
+deploy-detox-complete:
+	@echo "🚀 Complete DetoxHook Deployment..."
+	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+		--rpc-url $(RPC_URL) \
+		--broadcast \
+		--verify \
+		--verifier blockscout \
+		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
+		-vvvv
+
+# Deploy DetoxHook Complete to Arbitrum Sepolia
+deploy-detox-complete-arbitrum-sepolia:
+	@echo "🚀 Complete DetoxHook Deployment to Arbitrum Sepolia..."
+	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		--verify \
+		--verifier blockscout \
+		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
+		-vvvv
+
+# Test DetoxHook Complete deployment on fork
+test-detox-complete-fork:
+	@echo "🧪 Testing DetoxHook Complete deployment on Arbitrum Sepolia fork..."
+	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--fork-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		-vvvv
+
+# Dry run DetoxHook Complete deployment (no broadcast)
+dry-run-detox-complete:
+	@echo "🔍 Dry run DetoxHook Complete deployment..."
+	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		-vvvv
+
 # Generate TypeScript ABIs
 generate-abis:
 	node scripts-js/generateTsAbis.js
