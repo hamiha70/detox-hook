@@ -21,7 +21,7 @@ import { ChainAddresses } from "../script/ChainAddresses.sol";
  * 
  * ## Test Coverage
  * - ✅ Local Anvil deployment with automatic CREATE2 deployer setup
- * - ✅ Arbitrum Sepolia fork deployment (requires PRIVATE_KEY)
+ * - ✅ Arbitrum Sepolia fork deployment (requires DEPLOYMENT_KEY)
  * - ✅ Salt mining functionality and address validation
  * - ✅ CREATE2 deployer functionality verification
  * - ✅ Full end-to-end deployment workflow
@@ -39,7 +39,7 @@ import { ChainAddresses } from "../script/ChainAddresses.sol";
  * # Test local deployment (always works)
  * forge test --match-test test_DeployScriptOnLocalAnvil -vv
  * 
- * # Test fork deployment (requires PRIVATE_KEY)
+ * # Test fork deployment (requires DEPLOYMENT_KEY)
  * forge test --match-test test_DeployScriptOnArbitrumSepoliaFork -vv
  * 
  * # Debug deployment issues
@@ -48,7 +48,7 @@ import { ChainAddresses } from "../script/ChainAddresses.sol";
  * 
  * ## Environment Requirements
  * - Local Anvil: No special requirements (CREATE2 deployer auto-deployed)
- * - Fork Tests: Requires PRIVATE_KEY environment variable and funded account
+ * - Fork Tests: Requires DEPLOYMENT_KEY environment variable and funded account
  * 
  * ## Key Features
  * - Automatic CREATE2 deployer setup for local testing
@@ -109,11 +109,11 @@ contract DeployDetoxHookScriptTest is Test {
     }
     
     function test_DeployScriptDeterministicOnArbitrumSepoliaFork() public {
-        // Skip if PRIVATE_KEY is not set (common in CI/testing environments)
-        try vm.envUint("PRIVATE_KEY") returns (uint256) {
-            // PRIVATE_KEY is set, proceed with test
+        // Skip if DEPLOYMENT_KEY is not set (common in CI/testing environments)
+        try vm.envUint("DEPLOYMENT_KEY") returns (uint256) {
+            // DEPLOYMENT_KEY is set, proceed with test
         } catch {
-            console.log("PRIVATE_KEY not set, skipping Arbitrum Sepolia deterministic fork test");
+            console.log("DEPLOYMENT_KEY not set, skipping Arbitrum Sepolia deterministic fork test");
             return;
         }
         
