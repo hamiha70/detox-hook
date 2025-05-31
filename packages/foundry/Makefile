@@ -84,7 +84,6 @@ deploy-detox-complete-arbitrum-sepolia:
 test-detox-complete-fork:
 	@echo "🧪 Testing DetoxHook Complete deployment on Arbitrum Sepolia fork..."
 	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
-		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		--fork-url https://sepolia-rollup.arbitrum.io/rpc \
 		--broadcast \
 		-vvvv
