@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": {
     "packages": [
+      "packages/foundry",
       "packages/nextjs",
       "packages/ponder"
     ]
