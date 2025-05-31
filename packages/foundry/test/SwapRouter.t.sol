@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import {SwapRouter, IPoolSwapTest} from "../src/swapRouter.sol";
+import {SwapRouter, IPoolSwapTest} from "../src/SwapRouter.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -109,7 +109,7 @@ contract SwapRouterTest is Test {
         bytes memory updateData = "";
         
         vm.expectRevert(SwapRouter.InvalidSwapAmount.selector);
-        swapRouterContract.swap(0, updateData);
+        swapRouterContract.swap(0, true, updateData);
         
         console.log("Zero amount validation working correctly");
     }

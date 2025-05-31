@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import {SwapRouter, IPoolSwapTest} from "../src/swapRouter.sol";
+import {SwapRouter, IPoolSwapTest} from "../src/SwapRouter.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
