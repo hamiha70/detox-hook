@@ -59,7 +59,7 @@ contract DetoxHookTest is Test, Deployers {
         );
         
         // Deploy the hook using CREATE2 to get the correct address
-        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this)), address(hookAddress));
+        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(0)), address(hookAddress));
         hook = DetoxHook(address(hookAddress));
         
         // Create pool key

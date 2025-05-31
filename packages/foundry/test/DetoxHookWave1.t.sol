@@ -43,7 +43,7 @@ contract DetoxHookWave1Test is Test, Deployers {
         mockOracle = new MockPyth(60, 1); // 60 second validity, 1 wei fee
 
         address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG));
-        deployCodeTo("DetoxHook.sol", abi.encode(manager, owner), hookAddress);
+        deployCodeTo("DetoxHook.sol", abi.encode(manager, owner, address(0)), hookAddress);
         hook = DetoxHook(hookAddress);
 
         // Create pool key manually

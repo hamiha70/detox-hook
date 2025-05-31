@@ -136,7 +136,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         
         // Prepare creation code and constructor arguments
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(address(manager), address(this));
+        bytes memory constructorArgs = abi.encode(address(manager), address(this), address(0));
         
         // Mine the salt using HookMiner
         address expectedAddress;

@@ -12,19 +12,18 @@ import { Currency, CurrencyLibrary } from "@uniswap/v4-core/src/types/Currency.s
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import { IPyth, PythStructs } from "./libraries/PythLibrary.sol";
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { HookLibrary } from "./libraries/HookLibrary.sol";
 
-contract DetoxHook is BaseHook, Ownable {
+contract DetoxHook is BaseHook {
     using CurrencyLibrary for Currency;
     using SafeCast for uint256;
     using PoolIdLibrary for PoolKey;
 
-    // Configuration constants (now configurable)
-    uint256 public alphaBps = 500; // 5% threshold in basis points (configurable)
-    uint256 public rhoBps = 8000; // 80% hook share in basis points (configurable)
+    // Configuration constants
+    uint256 private constant ALPHA_BPS = 500; // 5% threshold in basis points
+    uint256 private constant RHO_BPS = 8000; // 80% hook share in basis points
     uint256 private constant PRICE_PRECISION = 1e8; // 8 decimal precision like USDC
-    uint256 public stalenessThreshold = 60; // Oracle staleness limit in seconds (configurable)
+    uint256 private constant STALENESS_THRESHOLD = 60; // Oracle staleness limit in seconds
     uint256 private constant BASIS_POINTS = 10000; // 100% in basis points
 
     // Chain-specific constants
@@ -35,19 +34,30 @@ contract DetoxHook is BaseHook, Ownable {
 
     // Contract state
     IPyth public immutable pythOracle;
+    address public immutable owner;
     mapping(Currency => bytes32) public pythPriceIds;
 
     // Mapping to track accumulated tokens per pool and token
     mapping(PoolId => mapping(Currency => uint256)) public accumulatedTokens;
 
-    // Events
-    event ParametersUpdated(uint256 alphaBps, uint256 rhoBps, uint256 stalenessThreshold);
-    event PriceIdUpdated(Currency currency, bytes32 priceId);
-    event ArbitrageCaptured(PoolId indexed poolId, Currency indexed currency, uint256 amount);
+    // Configurable parameters
+    uint256 public alphaBps;
+    uint256 public rhoBps;
+    uint256 public stalenessThreshold;
 
-    constructor(IPoolManager _poolManager, address _owner) BaseHook(_poolManager) Ownable(_owner) {
-        // Only initialize Pyth oracle on Arbitrum Sepolia (chain ID 421614)
-        if (block.chainid == 421614) {
+    constructor(IPoolManager _poolManager, address _owner, address _oracle) BaseHook(_poolManager) {
+        owner = _owner;
+        
+        // Initialize configurable parameters
+        alphaBps = ALPHA_BPS;
+        rhoBps = RHO_BPS;
+        stalenessThreshold = STALENESS_THRESHOLD;
+
+        // If oracle is provided, use it; otherwise use default logic
+        if (_oracle != address(0)) {
+            pythOracle = IPyth(_oracle);
+        } else if (block.chainid == 421614) {
+            // Only initialize Pyth oracle on Arbitrum Sepolia (chain ID 421614)
             pythOracle = IPyth(PYTH_ORACLE_ON_ARBITRUM_SEPOLIA);
         } else {
             // On other chains (like Anvil), set to zero address
@@ -59,37 +69,10 @@ contract DetoxHook is BaseHook, Ownable {
         pythPriceIds[Currency.wrap(USDC_ON_ARBITRUM)] = USDC_USD_PRICE_ID;
     }
 
-    // ============ Owner Configuration Functions ============
-
-    /**
-     * @notice Update arbitrage threshold and hook share parameters
-     * @param _alphaBps New arbitrage threshold in basis points (e.g., 500 = 5%)
-     * @param _rhoBps New hook share in basis points (e.g., 8000 = 80%)
-     * @param _stalenessThreshold New oracle staleness threshold in seconds
-     */
-    function updateParameters(uint256 _alphaBps, uint256 _rhoBps, uint256 _stalenessThreshold) external onlyOwner {
-        require(_alphaBps <= BASIS_POINTS, "Alpha BPS too high");
-        require(_rhoBps <= BASIS_POINTS, "Rho BPS too high");
-        require(_stalenessThreshold > 0, "Staleness threshold must be positive");
-
-        alphaBps = _alphaBps;
-        rhoBps = _rhoBps;
-        stalenessThreshold = _stalenessThreshold;
-
-        emit ParametersUpdated(_alphaBps, _rhoBps, _stalenessThreshold);
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
     }
-
-    /**
-     * @notice Set price ID for a currency
-     * @param currency The currency to set price ID for
-     * @param priceId The Pyth price ID
-     */
-    function setPriceId(Currency currency, bytes32 priceId) external onlyOwner {
-        pythPriceIds[currency] = priceId;
-        emit PriceIdUpdated(currency, priceId);
-    }
-
-    // ============ Hook Implementation ============
 
     function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         internal
@@ -126,11 +109,9 @@ contract DetoxHook is BaseHook, Ownable {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
 
-        // 6. Execute arbitrage capture (placeholder for Wave 3)
+        // 6. Execute arbitrage capture
         return _executeArbitrageCapture(key, params, arbitrageOpp);
     }
-
-    // ============ Oracle Functions ============
 
     /**
      * @notice Get oracle price for a currency with error handling
@@ -187,7 +168,7 @@ contract DetoxHook is BaseHook, Ownable {
      * @param key The pool key
      * @return price Pool price as currency1/currency0 ratio with PRICE_PRECISION
      */
-    function _getPoolPrice(PoolKey calldata key) internal view returns (uint256) {
+    function _getPoolPrice(PoolKey memory key) internal view returns (uint256) {
         uint160 sqrtPriceX96 = HookLibrary.getPoolPrice(poolManager, key);
         if (sqrtPriceX96 == 0) return 0;
 
@@ -197,8 +178,6 @@ contract DetoxHook is BaseHook, Ownable {
         // Normalize to PRICE_PRECISION (8 decimals)
         return FullMath.mulDiv(price, PRICE_PRECISION, 1e18);
     }
-
-    // ============ Arbitrage Logic (Placeholder for Wave 2) ============
 
     /**
      * @notice Calculate arbitrage opportunity based on price differences
@@ -214,9 +193,26 @@ contract DetoxHook is BaseHook, Ownable {
         uint256 inputPrice,
         uint256 outputPrice
     ) internal pure returns (uint256) {
-        // Placeholder implementation - will be completed in Wave 2
-        params; poolPrice; inputPrice; outputPrice; // Silence unused variable warnings
-        return 0;
+        uint256 exactInputAmount = uint256(-params.amountSpecified);
+
+        // Calculate market price as output/input ratio
+        uint256 marketPrice = FullMath.mulDiv(outputPrice, PRICE_PRECISION, inputPrice);
+
+        if (params.zeroForOne) {
+            // Case 1: zeroForOne = true (currency0 → currency1)
+            // Arbitrage opportunity exists if pool values currency1 higher than market
+            if (poolPrice <= marketPrice) return 0;
+
+            uint256 priceDiff = poolPrice - marketPrice;
+            return FullMath.mulDiv(exactInputAmount, priceDiff, PRICE_PRECISION);
+        } else {
+            // Case 2: zeroForOne = false (currency1 → currency0)
+            // Arbitrage opportunity exists if pool values currency1 lower than market
+            if (poolPrice >= marketPrice) return 0;
+
+            uint256 priceDiff = marketPrice - poolPrice;
+            return FullMath.mulDiv(exactInputAmount, priceDiff, PRICE_PRECISION);
+        }
     }
 
     /**
@@ -228,7 +224,7 @@ contract DetoxHook is BaseHook, Ownable {
     function _shouldInterfere(uint256 arbitrageOpp, uint256 swapAmount) internal view returns (bool) {
         if (arbitrageOpp == 0 || swapAmount == 0) return false;
 
-        // Check if arbitrage/swapAmount > ALPHA (configurable %)
+        // Check if arbitrage/swapAmount > ALPHA (5%)
         uint256 ratio = FullMath.mulDiv(arbitrageOpp, BASIS_POINTS, swapAmount);
         return ratio > alphaBps;
     }
@@ -246,9 +242,52 @@ contract DetoxHook is BaseHook, Ownable {
         internal
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        // Placeholder implementation - will be completed in Wave 3
-        key; params; arbitrageOpp; // Silence unused variable warnings
-        return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
+        // Calculate hook's share (80% of arbitrage opportunity)
+        uint256 hookShare = FullMath.mulDiv(arbitrageOpp, rhoBps, BASIS_POINTS);
+
+        // Determine input currency
+        Currency inputCurrency = params.zeroForOne ? key.currency0 : key.currency1;
+
+        // Take hook's share from pool
+        poolManager.take(inputCurrency, address(this), hookShare);
+
+        // Track accumulated tokens
+        PoolId poolId = key.toId();
+        accumulatedTokens[poolId][inputCurrency] += hookShare;
+
+        // Create delta to reduce swap amount by hook's share
+        BeforeSwapDelta delta = params.zeroForOne
+            ? toBeforeSwapDelta(int128(int256(hookShare)), 0)
+            : toBeforeSwapDelta(0, int128(int256(hookShare)));
+
+        return (BaseHook.beforeSwap.selector, delta, 0);
+    }
+
+    // ============ Owner Functions ============
+
+    /**
+     * @notice Update hook parameters (only owner)
+     * @param _alphaBps New alpha threshold in basis points
+     * @param _rhoBps New rho share in basis points
+     * @param _stalenessThreshold New staleness threshold in seconds
+     */
+    function updateParameters(uint256 _alphaBps, uint256 _rhoBps, uint256 _stalenessThreshold) external onlyOwner {
+        require(_alphaBps <= BASIS_POINTS, "Alpha BPS too high");
+        require(_rhoBps <= BASIS_POINTS, "Rho BPS too high");
+        require(_stalenessThreshold > 0, "Staleness threshold must be positive");
+
+        alphaBps = _alphaBps;
+        rhoBps = _rhoBps;
+        stalenessThreshold = _stalenessThreshold;
+    }
+
+    /**
+     * @notice Set price ID for a currency (only owner)
+     * @param currency The currency to set price ID for
+     * @param priceId The Pyth price ID
+     */
+    function setPriceId(Currency currency, bytes32 priceId) external onlyOwner {
+        pythPriceIds[currency] = priceId;
     }
 
     // ============ View Functions ============
@@ -276,16 +315,50 @@ contract DetoxHook is BaseHook, Ownable {
     }
 
     /**
-     * @notice Get current configuration parameters
-     * @return _alphaBps Current arbitrage threshold in basis points
-     * @return _rhoBps Current hook share in basis points
-     * @return _stalenessThreshold Current staleness threshold in seconds
+     * @notice Calculate potential arbitrage opportunity for a given swap (view function)
+     * @param key The pool key
+     * @param params The swap parameters
+     * @return arbitrageOpp The arbitrage opportunity amount
+     * @return hookShare The amount the hook would capture
+     * @return shouldInterfere Whether the hook would interfere
      */
-    function getParameters() external view returns (uint256 _alphaBps, uint256 _rhoBps, uint256 _stalenessThreshold) {
+    function calculateArbitrageOpportunity(PoolKey calldata key, SwapParams calldata params)
+        external
+        view
+        returns (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere)
+    {
+        if (params.amountSpecified >= 0) return (0, 0, false);
+
+        Currency inputCurrency = params.zeroForOne ? key.currency0 : key.currency1;
+        Currency outputCurrency = params.zeroForOne ? key.currency1 : key.currency0;
+
+        (uint256 inputPrice, bool inputValid) = _getOraclePrice(inputCurrency);
+        (uint256 outputPrice, bool outputValid) = _getOraclePrice(outputCurrency);
+
+        if (!inputValid || !outputValid) return (0, 0, false);
+
+        uint256 poolPrice = _getPoolPrice(key);
+        if (poolPrice == 0) return (0, 0, false);
+
+        arbitrageOpp = _calculateArbitrageOpportunity(params, poolPrice, inputPrice, outputPrice);
+        shouldInterfere = _shouldInterfere(arbitrageOpp, uint256(-params.amountSpecified));
+
+        if (shouldInterfere) {
+            hookShare = FullMath.mulDiv(arbitrageOpp, rhoBps, BASIS_POINTS);
+        }
+    }
+
+    /**
+     * @notice Get current parameters
+     * @return alphaBps Current alpha threshold in basis points
+     * @return rhoBps Current rho share in basis points
+     * @return stalenessThreshold Current staleness threshold in seconds
+     */
+    function getParameters() external view returns (uint256, uint256, uint256) {
         return (alphaBps, rhoBps, stalenessThreshold);
     }
 
-    function getHookPermissions() public pure virtual override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: false,
