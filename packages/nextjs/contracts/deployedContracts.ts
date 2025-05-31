@@ -6,6 +6,406 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 
 const deployedContracts = {
   421614: {
+    SwapRouter: {
+      address: "0xAe91123dD0930b3bEa45dB227522839A9e095443",
+      abi: [
+        {
+          type: "constructor",
+          inputs: [
+            {
+              name: "_poolSwapTest",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "_poolKey",
+              type: "tuple",
+              internalType: "struct PoolKey",
+              components: [
+                {
+                  name: "currency0",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "currency1",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "fee",
+                  type: "uint24",
+                  internalType: "uint24",
+                },
+                {
+                  name: "tickSpacing",
+                  type: "int24",
+                  internalType: "int24",
+                },
+                {
+                  name: "hooks",
+                  type: "address",
+                  internalType: "contract IHooks",
+                },
+              ],
+            },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "defaultTestSettings",
+          inputs: [],
+          outputs: [
+            {
+              name: "takeClaims",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "settleUsingBurn",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getPoolConfiguration",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "tuple",
+              internalType: "struct PoolKey",
+              components: [
+                {
+                  name: "currency0",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "currency1",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "fee",
+                  type: "uint24",
+                  internalType: "uint24",
+                },
+                {
+                  name: "tickSpacing",
+                  type: "int24",
+                  internalType: "int24",
+                },
+                {
+                  name: "hooks",
+                  type: "address",
+                  internalType: "contract IHooks",
+                },
+              ],
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getTestSettings",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "tuple",
+              internalType: "struct IPoolSwapTest.TestSettings",
+              components: [
+                {
+                  name: "takeClaims",
+                  type: "bool",
+                  internalType: "bool",
+                },
+                {
+                  name: "settleUsingBurn",
+                  type: "bool",
+                  internalType: "bool",
+                },
+              ],
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "poolKey",
+          inputs: [],
+          outputs: [
+            {
+              name: "currency0",
+              type: "address",
+              internalType: "Currency",
+            },
+            {
+              name: "currency1",
+              type: "address",
+              internalType: "Currency",
+            },
+            {
+              name: "fee",
+              type: "uint24",
+              internalType: "uint24",
+            },
+            {
+              name: "tickSpacing",
+              type: "int24",
+              internalType: "int24",
+            },
+            {
+              name: "hooks",
+              type: "address",
+              internalType: "contract IHooks",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "poolSwapTest",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "contract IPoolSwapTest",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "swap",
+          inputs: [
+            {
+              name: "amountToSwap",
+              type: "int256",
+              internalType: "int256",
+            },
+            {
+              name: "updateData",
+              type: "bytes",
+              internalType: "bytes",
+            },
+          ],
+          outputs: [
+            {
+              name: "delta",
+              type: "int256",
+              internalType: "BalanceDelta",
+            },
+          ],
+          stateMutability: "payable",
+        },
+        {
+          type: "function",
+          name: "swapWithDirection",
+          inputs: [
+            {
+              name: "amountToSwap",
+              type: "int256",
+              internalType: "int256",
+            },
+            {
+              name: "zeroForOne",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "updateData",
+              type: "bytes",
+              internalType: "bytes",
+            },
+          ],
+          outputs: [
+            {
+              name: "delta",
+              type: "int256",
+              internalType: "BalanceDelta",
+            },
+          ],
+          stateMutability: "payable",
+        },
+        {
+          type: "function",
+          name: "swapWithPriceLimit",
+          inputs: [
+            {
+              name: "amountToSwap",
+              type: "int256",
+              internalType: "int256",
+            },
+            {
+              name: "zeroForOne",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "sqrtPriceLimitX96",
+              type: "uint160",
+              internalType: "uint160",
+            },
+            {
+              name: "updateData",
+              type: "bytes",
+              internalType: "bytes",
+            },
+          ],
+          outputs: [
+            {
+              name: "delta",
+              type: "int256",
+              internalType: "BalanceDelta",
+            },
+          ],
+          stateMutability: "payable",
+        },
+        {
+          type: "function",
+          name: "updatePoolConfiguration",
+          inputs: [
+            {
+              name: "newPoolKey",
+              type: "tuple",
+              internalType: "struct PoolKey",
+              components: [
+                {
+                  name: "currency0",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "currency1",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "fee",
+                  type: "uint24",
+                  internalType: "uint24",
+                },
+                {
+                  name: "tickSpacing",
+                  type: "int24",
+                  internalType: "int24",
+                },
+                {
+                  name: "hooks",
+                  type: "address",
+                  internalType: "contract IHooks",
+                },
+              ],
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "updateTestSettings",
+          inputs: [
+            {
+              name: "takeClaims",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "settleUsingBurn",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "event",
+          name: "PoolConfigurationUpdated",
+          inputs: [
+            {
+              name: "currency0",
+              type: "address",
+              indexed: false,
+              internalType: "Currency",
+            },
+            {
+              name: "currency1",
+              type: "address",
+              indexed: false,
+              internalType: "Currency",
+            },
+            {
+              name: "fee",
+              type: "uint24",
+              indexed: false,
+              internalType: "uint24",
+            },
+            {
+              name: "tickSpacing",
+              type: "int24",
+              indexed: false,
+              internalType: "int24",
+            },
+            {
+              name: "hooks",
+              type: "address",
+              indexed: false,
+              internalType: "contract IHooks",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "SwapExecuted",
+          inputs: [
+            {
+              name: "sender",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "amountSpecified",
+              type: "int256",
+              indexed: false,
+              internalType: "int256",
+            },
+            {
+              name: "zeroForOne",
+              type: "bool",
+              indexed: false,
+              internalType: "bool",
+            },
+            {
+              name: "delta",
+              type: "int256",
+              indexed: false,
+              internalType: "BalanceDelta",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "error",
+          name: "InvalidSwapAmount",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "PoolSwapTestNotSet",
+          inputs: [],
+        },
+      ],
+    },
     DetoxHook: {
       address: "0xadc387b56f58d9f5b486bb7575bf3b5ea5898088",
       abi: [

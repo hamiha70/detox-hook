@@ -62,6 +62,22 @@ const Home: NextPage = () => {
                 tab.
               </p>
             </div>
+            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
+              <svg
+                className="h-8 w-8 fill-secondary"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM7.5 9L12 7l4.5 2-4.5 2-4.5-2zm0 6L12 13l4.5 2-4.5 2-4.5-2z"/>
+              </svg>
+              <p>
+                Use the{" "}
+                <Link href="/swap" passHref className="link">
+                  SwapRouter Dashboard
+                </Link>{" "}
+                to swap ETH for USDC on Arbitrum Sepolia.
+              </p>
+            </div>
           </div>
         </div>
       </div>

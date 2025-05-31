@@ -22,6 +22,15 @@ export const menuLinks: HeaderMenuLink[] = [
     href: "/",
   },
   {
+    label: "SwapRouter",
+    href: "/swap",
+    icon: (
+      <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM7.5 9L12 7l4.5 2-4.5 2-4.5-2zm0 6L12 13l4.5 2-4.5 2-4.5-2z"/>
+      </svg>
+    ),
+  },
+  {
     label: "Ponder",
     href: "/ponder-greetings",
     icon: <MagnifyingGlassIcon className="h-4 w-4" />,

@@ -1,0 +1,33 @@
+{
+  "network": "arbitrum-sepolia",
+  "chainId": 421614,
+  "deployments": {
+    "SwapRouter": {
+      "address": "",
+      "deployer": "",
+      "deploymentHash": "",
+      "blockNumber": "",
+      "timestamp": "",
+      "gasUsed": "",
+      "gasPrice": "",
+      "verified": false,
+      "constructorArgs": {
+        "poolSwapTest": "0xf3A39C86dbd13C45365E57FB90fe413371F65AF8",
+        "poolKey": {
+          "currency0": "0x0000000000000000000000000000000000000000",
+          "currency1": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+          "fee": 3000,
+          "tickSpacing": 60,
+          "hooks": "0x0000000000000000000000000000000000000000"
+        }
+      }
+    }
+  },
+  "configuration": {
+    "poolSwapTest": "0xf3A39C86dbd13C45365E57FB90fe413371F65AF8",
+    "defaultPool": "ETH/USDC",
+    "feePercentage": "0.3%",
+    "blockExplorer": "https://arbitrum-sepolia.blockscout.com"
+  },
+  "lastUpdated": ""
+} 

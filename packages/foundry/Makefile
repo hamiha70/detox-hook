@@ -1,4 +1,4 @@
-.PHONY: build deploy generate-abis get-address account chain compile flatten fork format lint test verify
+.PHONY: build deploy generate-abis get-address account chain compile flatten fork format lint test verify update-frontend-address
 
 DEPLOY_SCRIPT ?= script/Deploy.s.sol
 
@@ -20,8 +20,43 @@ deploy:
 	@if [ ! -f "$(DEPLOY_SCRIPT)" ]; then 		echo "Error: Deploy script '$(DEPLOY_SCRIPT)' not found"; 		exit 1; 	fi
 	@if [ "$(RPC_URL)" = "localhost" ]; then 		if [ "$(ETH_KEYSTORE_ACCOUNT)" = "scaffold-eth-default" ]; then 			forge script $(DEPLOY_SCRIPT) --rpc-url localhost --password localhost --broadcast --legacy --ffi; 		else 			forge script $(DEPLOY_SCRIPT) --rpc-url localhost --broadcast --legacy --ffi; 		fi 	else 		forge script $(DEPLOY_SCRIPT) --rpc-url $(RPC_URL) --broadcast --legacy --ffi; 	fi
 
+# Deploy SwapRouter to Arbitrum Sepolia
+deploy-swap-router-arbitrum-sepolia:
+	@echo "🚀 Deploying SwapRouter to Arbitrum Sepolia..."
+	@if [ -z "$(DEPLOYMENT_KEY)" ]; then \
+		echo "❌ Error: DEPLOYMENT_KEY environment variable is not set"; \
+		echo "   Please set your deployment private key with: export DEPLOYMENT_KEY=0x..."; \
+		exit 1; \
+	fi
+	@echo "📝 Using DEPLOYMENT_KEY for deployment"
+	forge script script/DeploySwapRouter.s.sol:DeploySwapRouter \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		--verify \
+		--etherscan-api-key $(ARBISCAN_API_KEY) \
+		-vvvv
+
+# Test SwapRouter deployment configuration (no broadcast)
+test-swap-router-deployment:
+	@echo "🧪 Testing SwapRouter deployment configuration..."
+	@echo "📋 This will validate deployment parameters without broadcasting"
+	forge script script/DeploySwapRouter.s.sol:DeploySwapRouter \
+		--sig "testDeployment()" \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		-vvvv
+
+# Update SwapRouter address in frontend after deployment
+update-frontend-address:
+	@echo "🔄 Updating SwapRouter address in frontend..."
+	@if [ -z "$(CONTRACT_ADDRESS)" ]; then \
+		echo "❌ Error: CONTRACT_ADDRESS environment variable is not set"; \
+		echo "   Usage: CONTRACT_ADDRESS=0x123...abc make update-frontend-address"; \
+		exit 1; \
+	fi
+	cd ../nextjs && node scripts/updateSwapRouterAddress.js $(CONTRACT_ADDRESS)
+
 # Deploy and generate ABIs
-deploy-and-generate-abis: deploy generate-abis 
+deploy-and-generate-abis: deploy generate-abis
 
 # Generate TypeScript ABIs
 generate-abis:
