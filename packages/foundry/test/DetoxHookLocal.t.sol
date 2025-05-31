@@ -19,19 +19,20 @@ import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {HookMiner} from "@v4-periphery/src/utils/HookMiner.sol";
 
 /**
  * @title DetoxHookLocal
- * @notice Test suite for DetoxHook on local Anvil network
- * @dev Tests the actual deployed contract at the known address
+ * @notice Test suite for DetoxHook on local Anvil network using proper HookMiner deployment
+ * @dev Deploys the hook correctly with HookMiner to ensure valid permissions
  */
 contract DetoxHookLocal is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
 
-    // Local deployment addresses (from localhost:3001 explorer)
-    address constant LOCAL_DETOX_HOOK = 0x700b6A60ce7EaaEA56F065753d8dcB9653dbAD35;
+    // Hook permission flags
+    uint160 constant HOOK_FLAGS = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
     
     DetoxHook hook;
     PoolKey poolKey;
@@ -45,8 +46,8 @@ contract DetoxHookLocal is Test, Deployers {
         // Deploy the V4 ecosystem locally
         deployFreshManagerAndRouters();
         
-        // Connect to the deployed hook
-        hook = DetoxHook(LOCAL_DETOX_HOOK);
+        // Deploy DetoxHook with proper HookMiner
+        deployDetoxHookWithHookMiner();
         
         // Create test currencies
         MockERC20 tokenA = new MockERC20("TokenA", "TKNA", 18);
@@ -104,21 +105,72 @@ contract DetoxHookLocal is Test, Deployers {
             }),
             ZERO_BYTES
         );
+        
+        console.log("=== Local Test Setup Complete ===");
+        console.log("Hook address:", address(hook));
+        console.log("Hook permissions:", uint160(address(hook)) & HookMiner.FLAG_MASK);
+        console.log("PoolManager:", address(manager));
     }
     
-    function test_LocalHookExists() public {
+    function deployDetoxHookWithHookMiner() internal {
+        console.log("=== Deploying DetoxHook with HookMiner (Local) ===");
+        console.log("Required flags:", HOOK_FLAGS);
+        
+        // Prepare creation code and constructor arguments
+        bytes memory creationCode = type(DetoxHook).creationCode;
+        bytes memory constructorArgs = abi.encode(address(manager));
+        
+        // Mine the salt using HookMiner (using this contract as deployer for local testing)
+        address expectedAddress;
+        bytes32 salt;
+        (expectedAddress, salt) = HookMiner.find(address(this), HOOK_FLAGS, creationCode, constructorArgs);
+        
+        console.log("=== HookMiner Results (Local) ===");
+        console.log("Salt found:", uint256(salt));
+        console.log("Expected hook address:", expectedAddress);
+        console.log("Address flags:", uint160(expectedAddress) & HookMiner.FLAG_MASK);
+        console.log("Required flags:", HOOK_FLAGS);
+        console.log("Flags match:", (uint160(expectedAddress) & HookMiner.FLAG_MASK) == HOOK_FLAGS);
+        
+        // Deploy using CREATE2 with the found salt
+        bytes memory bytecode = abi.encodePacked(creationCode, constructorArgs);
+        address deployedAddress;
+        
+        assembly {
+            deployedAddress := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+        }
+        
+        require(deployedAddress != address(0), "Hook deployment failed");
+        require(deployedAddress == expectedAddress, "Deployment address mismatch");
+        
+        hook = DetoxHook(deployedAddress);
+        
+        console.log("=== Hook Deployed Successfully (Local) ===");
+        console.log("Hook address:", address(hook));
+        console.log("Hook permissions valid:", (uint160(address(hook)) & HookMiner.FLAG_MASK) == HOOK_FLAGS);
+        
+        // Verify hook functionality
+        require(address(hook.poolManager()) == address(manager), "Hook not connected to manager");
+        
+        Hooks.Permissions memory permissions = hook.getHookPermissions();
+        require(permissions.beforeSwap, "beforeSwap permission not set");
+        require(permissions.beforeSwapReturnDelta, "beforeSwapReturnDelta permission not set");
+    }
+    
+    function test_LocalHookExists() public view {
         // Verify the hook contract exists and has code
+        address hookAddress = address(hook);
         uint256 codeSize;
         assembly {
-            codeSize := extcodesize(LOCAL_DETOX_HOOK)
+            codeSize := extcodesize(hookAddress)
         }
         
         assertGt(codeSize, 0, "Hook contract should have code");
         console.log("Local DetoxHook code size:", codeSize);
-        console.log("Hook address:", LOCAL_DETOX_HOOK);
+        console.log("Hook address:", address(hook));
     }
     
-    function test_HookPoolManagerConnection() public {
+    function test_HookPoolManagerConnection() public view {
         // Verify the hook is connected to the correct pool manager
         address hookPoolManager = address(hook.poolManager());
         assertEq(hookPoolManager, address(manager), "Hook should be connected to local PoolManager");
@@ -126,9 +178,9 @@ contract DetoxHookLocal is Test, Deployers {
         console.log("Expected PoolManager:", address(manager));
     }
     
-    function test_HookPermissions() public {
+    function test_HookPermissions() public view {
         // Test hook permissions from address
-        uint160 permissions = uint160(LOCAL_DETOX_HOOK);
+        uint160 permissions = uint160(address(hook));
         
         // Check beforeSwap permission (bit 7)
         bool hasBeforeSwap = (permissions & Hooks.BEFORE_SWAP_FLAG) != 0;
@@ -143,7 +195,7 @@ contract DetoxHookLocal is Test, Deployers {
         console.log("Has beforeSwapReturnDelta:", hasBeforeSwapReturnDelta);
     }
     
-    function test_HookGetPermissions() public {
+    function test_HookGetPermissions() public view {
         // Test the getHookPermissions function
         Hooks.Permissions memory permissions = hook.getHookPermissions();
         
@@ -158,7 +210,7 @@ contract DetoxHookLocal is Test, Deployers {
         console.log("  afterSwap:", permissions.afterSwap);
     }
     
-    function test_PoolInitialization() public {
+    function test_PoolInitialization() public view {
         // Verify pool was initialized correctly with the hook
         (uint160 sqrtPriceX96, int24 tick, , ) = manager.getSlot0(poolId);
         
@@ -198,12 +250,14 @@ contract DetoxHookLocal is Test, Deployers {
         
         console.log("Alice Token0 after swap:", aliceToken0After);
         console.log("Alice Token1 after swap:", aliceToken1After);
-        console.log("Swap delta amount0:", delta.amount0());
-        console.log("Swap delta amount1:", delta.amount1());
+        console.log("Delta amount0:", delta.amount0());
+        console.log("Delta amount1:", delta.amount1());
         
         // Verify swap occurred
-        assertLt(aliceToken0After, aliceToken0Before, "Token0 balance should decrease");
-        assertGt(aliceToken1After, aliceToken1Before, "Token1 balance should increase");
+        assertLt(aliceToken0After, aliceToken0Before, "Alice should have less token0");
+        assertGt(aliceToken1After, aliceToken1Before, "Alice should have more token1");
+        
+        console.log("Local swap test completed successfully!");
     }
     
     function test_MultipleSwaps() public {
@@ -259,7 +313,7 @@ contract DetoxHookLocal is Test, Deployers {
     function test_DeploymentInfo() public {
         console.log("=== Local Deployment Information ===");
         console.log("Network: Local Anvil");
-        console.log("DetoxHook Address:", LOCAL_DETOX_HOOK);
+        console.log("DetoxHook Address:", address(hook));
         console.log("PoolManager Address:", address(manager));
         console.log("SwapRouter Address:", address(swapRouter));
         console.log("ModifyLiquidityRouter Address:", address(modifyLiquidityRouter));
