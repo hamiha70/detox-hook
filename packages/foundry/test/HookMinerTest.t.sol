@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import {DetoxHook} from "../contracts/DetoxHook.sol";
+import {DetoxHook} from "../src/DetoxHook.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {HookMiner} from "@v4-periphery/src/utils/HookMiner.sol";

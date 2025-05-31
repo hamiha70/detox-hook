@@ -1,19 +1,24 @@
 [profile.default]
-src = 'contracts'
-out = 'out'
-libs = ['lib']
-fs_permissions = [{ access = "read-write", path = "./"}]
-solc = "0.8.26"
+src = "src"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.26"
 evm_version = "cancun"
 optimizer = true
-optimizer_runs = 1000
-auto_detect_solc = true
-auto_detect_remappings = true
+optimizer_runs = 200
+via_ir = false
+bytecode_hash = "none"
+cbor_metadata = false
+sparse_mode = true
+ignored_error_codes = [6546, 1878, 2394]
+
+[profile.default.fuzz]
+runs = 1000
+
+# See more config options https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [rpc_endpoints]
-default_network = "http://127.0.0.1:8545"
-
-localhost = "http://127.0.0.1:8545"
+arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
 
 [fmt]
 line_length = 120

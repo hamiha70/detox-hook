@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import {DetoxHook} from "../contracts/DetoxHook.sol";
+import {DetoxHook} from "../src/DetoxHook.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -136,7 +136,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         
         // Prepare creation code and constructor arguments
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(address(manager));
+        bytes memory constructorArgs = abi.encode(address(manager), address(this));
         
         // Mine the salt using HookMiner
         address expectedAddress;

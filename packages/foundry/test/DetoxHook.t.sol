@@ -23,7 +23,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 // Our contract
-import {DetoxHook} from "../contracts/DetoxHook.sol";
+import {DetoxHook} from "../src/DetoxHook.sol";
 
 contract DetoxHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -59,7 +59,7 @@ contract DetoxHookTest is Test, Deployers {
         );
         
         // Deploy the hook using CREATE2 to get the correct address
-        deployCodeTo("DetoxHook", abi.encode(manager), address(hookAddress));
+        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this)), address(hookAddress));
         hook = DetoxHook(address(hookAddress));
         
         // Create pool key
