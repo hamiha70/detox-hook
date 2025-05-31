@@ -94,8 +94,7 @@ contract DetoxHookWave1Test is Test, Deployers {
         assertEq(hook.owner(), owner, "Owner should be set correctly");
 
         // Test initial parameters
-        (uint256 alphaBps, uint256 rhoBps, uint256 stalenessThreshold) = hook.getParameters();
-        assertEq(alphaBps, 500, "Initial alpha BPS should be 500 (5%)");
+        (uint256 rhoBps, uint256 stalenessThreshold) = hook.getParameters();
         assertEq(rhoBps, 8000, "Initial rho BPS should be 8000 (80%)");
         assertEq(stalenessThreshold, 60, "Initial staleness threshold should be 60 seconds");
     }
@@ -103,33 +102,28 @@ contract DetoxHookWave1Test is Test, Deployers {
     function testParameterUpdates() public {
         // Test parameter updates as owner
         vm.prank(owner);
-        hook.updateParameters(1000, 7000, 120);
+        hook.updateParameters(7000, 120);
 
-        (uint256 alphaBps, uint256 rhoBps, uint256 stalenessThreshold) = hook.getParameters();
-        assertEq(alphaBps, 1000, "Alpha BPS should be updated to 1000");
+        (uint256 rhoBps, uint256 stalenessThreshold) = hook.getParameters();
         assertEq(rhoBps, 7000, "Rho BPS should be updated to 7000");
         assertEq(stalenessThreshold, 120, "Staleness threshold should be updated to 120");
 
         // Test parameter updates fail for non-owner
         vm.expectRevert();
-        hook.updateParameters(500, 8000, 60);
+        hook.updateParameters(8000, 60);
     }
 
     function testParameterValidation() public {
         // Test invalid parameters
         vm.startPrank(owner);
 
-        // Alpha BPS too high
-        vm.expectRevert("Alpha BPS too high");
-        hook.updateParameters(10001, 8000, 60);
-
         // Rho BPS too high
         vm.expectRevert("Rho BPS too high");
-        hook.updateParameters(500, 10001, 60);
+        hook.updateParameters(10001, 60);
 
         // Staleness threshold zero
         vm.expectRevert("Staleness threshold must be positive");
-        hook.updateParameters(500, 8000, 0);
+        hook.updateParameters(8000, 0);
 
         vm.stopPrank();
     }

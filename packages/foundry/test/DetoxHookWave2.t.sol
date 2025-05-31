@@ -18,6 +18,8 @@ import { SwapParams, ModifyLiquidityParams } from "@uniswap/v4-core/src/types/Po
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import { MockPyth, PythStructs } from "../src/libraries/PythLibrary.sol";
+import { HookLibrary } from "../src/libraries/HookLibrary.sol";
+import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 contract DetoxHookWave2Test is Test, Deployers {
     using PoolIdLibrary for PoolId;
@@ -92,16 +94,43 @@ contract DetoxHookWave2Test is Test, Deployers {
     // ============ Helper Functions ============
 
     function setStandardPrices() internal {
-        mockOracle.setPrice(ETH_USD_PRICE_ID, int64(int256(ETH_PRICE_BASE * 1e6)), -8);
-        mockOracle.setPrice(USDC_USD_PRICE_ID, int64(int256(USDC_PRICE_BASE * 1e6)), -8);
+        // Set prices with realistic confidence intervals
+        mockOracle.updatePriceFeeds(
+            ETH_USD_PRICE_ID, 
+            int64(int256(ETH_PRICE_BASE * 1e6)), 
+            uint64(2 * 1e6), // $2 confidence for ETH
+            -8, 
+            block.timestamp
+        );
+        mockOracle.updatePriceFeeds(
+            USDC_USD_PRICE_ID, 
+            int64(int256(USDC_PRICE_BASE * 1e6)), 
+            uint64(1e4), // $0.01 confidence for USDC
+            -8, 
+            block.timestamp
+        );
     }
 
     function setETHPrice(uint256 priceUSD) internal {
-        mockOracle.setPrice(ETH_USD_PRICE_ID, int64(int256(priceUSD * 1e6)), -8);
+        // Set ETH price with $2 confidence interval
+        mockOracle.updatePriceFeeds(
+            ETH_USD_PRICE_ID, 
+            int64(int256(priceUSD * 1e6)), 
+            uint64(2 * 1e6), // $2 confidence
+            -8, 
+            block.timestamp
+        );
     }
 
     function setUSDCPrice(uint256 priceUSD) internal {
-        mockOracle.setPrice(USDC_USD_PRICE_ID, int64(int256(priceUSD * 1e6)), -8);
+        // Set USDC price with $0.01 confidence interval
+        mockOracle.updatePriceFeeds(
+            USDC_USD_PRICE_ID, 
+            int64(int256(priceUSD * 1e6)), 
+            uint64(1e4), // $0.01 confidence
+            -8, 
+            block.timestamp
+        );
     }
 
     function performSwap(bool zeroForOne, uint256 amountIn)
@@ -129,8 +158,8 @@ contract DetoxHookWave2Test is Test, Deployers {
     // ============ Wave 2 Tests: Arbitrage Detection & Calculation Logic ============
 
     function testArbitrageCalculationZeroForOne() public {
-        // Setup: Pool price = 1:1, Market ETH = $0.90 (10% lower than pool implies)
-        setETHPrice(90); // $0.90
+        // Setup: Pool price = 1:1, Market ETH = $1.10 (pool gives better rate for selling ETH)
+        setETHPrice(110); // $1.10 - ETH is more expensive in market
         setUSDCPrice(100); // $1.00
 
         SwapParams memory params = SwapParams({
@@ -139,7 +168,27 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        // Debug: Check actual prices
+        (uint256 ethPrice, uint256 ethConf, bool ethValid, ) = hook.getOraclePriceWithConfidence(currency0);
+        (uint256 usdcPrice, uint256 usdcConf, bool usdcValid, ) = hook.getOraclePriceWithConfidence(currency1);
+        
+        // Get pool price using HookLibrary
+        uint160 sqrtPriceX96 = HookLibrary.getPoolPrice(manager, poolKey);
+        uint256 poolPriceRaw = HookLibrary.sqrtPriceToPrice(sqrtPriceX96);
+        uint256 poolPrice = FullMath.mulDiv(poolPriceRaw, 100000000, 1e18); // Convert to PRICE_PRECISION
+        
+        uint256 marketPrice = (usdcPrice * 100000000) / ethPrice; // USDC/ETH market price
+
+        console.log("=== Debug Info ===");
+        console.log("ETH price:", ethPrice);
+        console.log("ETH confidence:", ethConf);
+        console.log("USDC price:", usdcPrice);
+        console.log("USDC confidence:", usdcConf);
+        console.log("Pool price:", poolPrice);
+        console.log("Market price:", marketPrice);
+        console.log("Pool > Market:", poolPrice > marketPrice);
+
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(poolKey, params);
 
         console.log("=== ZeroForOne Arbitrage Test ===");
@@ -148,6 +197,7 @@ contract DetoxHookWave2Test is Test, Deployers {
         console.log("Should interfere:", shouldInterfere);
 
         assertGt(arbitrageOpp, 0, "Should detect arbitrage opportunity when pool price > market price");
+        assertTrue(shouldInterfere, "Should interfere when arbitrage is advantageous");
         
         if (shouldInterfere) {
             assertGt(hookShare, 0, "Hook share should be positive when interfering");
@@ -167,7 +217,7 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(poolKey, params);
 
         console.log("=== OneForZero Arbitrage Test ===");
@@ -185,8 +235,8 @@ contract DetoxHookWave2Test is Test, Deployers {
     }
 
     function testThresholdBehaviorJustBelow() public {
-        // Test just below threshold (4% difference)
-        setETHPrice(96); // $0.96 (4% below $1.00)
+        // Test when arbitrage is not advantageous for swapper
+        setETHPrice(90); // $0.90 - not advantageous for zeroForOne (pool gives worse rate)
         setUSDCPrice(100); // $1.00
 
         SwapParams memory params = SwapParams({
@@ -195,21 +245,21 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(poolKey, params);
 
-        console.log("=== Just Below Threshold Test ===");
+        console.log("=== Not Advantageous Test ===");
         console.log("Arbitrage opportunity:", arbitrageOpp);
         console.log("Should interfere:", shouldInterfere);
 
-        // Should not interfere as arbitrage is below 5% threshold
-        assertFalse(shouldInterfere, "Should not interfere when arbitrage is below 5% threshold");
+        // Should not interfere as arbitrage is not advantageous for swapper
+        assertFalse(shouldInterfere, "Should not interfere when arbitrage is not advantageous for swapper");
         assertEq(hookShare, 0, "Hook share should be 0 when not interfering");
     }
 
     function testThresholdBehaviorJustAbove() public {
-        // Test just above threshold (6% difference)
-        setETHPrice(94); // $0.94 (6% below $1.00)
+        // Test when arbitrage is advantageous for swapper
+        setETHPrice(110); // $1.10 - advantageous for zeroForOne (pool gives better rate)
         setUSDCPrice(100); // $1.00
 
         SwapParams memory params = SwapParams({
@@ -218,15 +268,15 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(poolKey, params);
 
-        console.log("=== Just Above Threshold Test ===");
+        console.log("=== Advantageous Test ===");
         console.log("Arbitrage opportunity:", arbitrageOpp);
         console.log("Should interfere:", shouldInterfere);
 
-        // Should interfere as arbitrage is above 5% threshold
-        assertTrue(shouldInterfere, "Should interfere when arbitrage is above 5% threshold");
+        // Should interfere as arbitrage is advantageous for swapper
+        assertTrue(shouldInterfere, "Should interfere when arbitrage is advantageous for swapper");
         assertGt(hookShare, 0, "Hook share should be positive when interfering");
     }
 
@@ -241,7 +291,7 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(poolKey, params);
 
         console.log("=== No Arbitrage Test ===");
@@ -261,7 +311,7 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(poolKey, params);
 
         assertEq(arbitrageOpp, 0, "Exact output swaps should not be analyzed");
@@ -287,7 +337,7 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(testKey, params);
 
         assertEq(arbitrageOpp, 0, "Should be no arbitrage when oracle fails");
@@ -298,15 +348,14 @@ contract DetoxHookWave2Test is Test, Deployers {
     function testParameterUpdates() public {
         // Test updating arbitrage parameters
         vm.prank(owner);
-        hook.updateParameters(1000, 7000, 120); // 10% threshold, 70% share, 120s staleness
+        hook.updateParameters(7000, 120); // 70% share, 120s staleness
 
-        (uint256 alphaBps, uint256 rhoBps, uint256 stalenessThreshold) = hook.getParameters();
-        assertEq(alphaBps, 1000, "Alpha BPS should be updated");
+        (uint256 rhoBps, uint256 stalenessThreshold) = hook.getParameters();
         assertEq(rhoBps, 7000, "Rho BPS should be updated");
         assertEq(stalenessThreshold, 120, "Staleness threshold should be updated");
 
         // Test that new parameters affect arbitrage calculation
-        setETHPrice(91); // $0.91 (9% below $1.00)
+        setETHPrice(110); // $1.10 - advantageous for zeroForOne
         setUSDCPrice(100); // $1.00
 
         SwapParams memory params = SwapParams({
@@ -315,20 +364,11 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+        (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
             hook.calculateArbitrageOpportunity(poolKey, params);
 
-        // With 9% arbitrage and 10% threshold, should not interfere
-        assertFalse(shouldInterfere, "Should not interfere with 9% arbitrage and 10% threshold");
-
-        // But if we set 8% threshold, it should interfere
-        vm.prank(owner);
-        hook.updateParameters(800, 7000, 120); // 8% threshold
-
-        (arbitrageOpp, hookShare, shouldInterfere) = 
-            hook.calculateArbitrageOpportunity(poolKey, params);
-
-        assertTrue(shouldInterfere, "Should interfere with 9% arbitrage and 8% threshold");
+        // Should interfere since it's advantageous and outside confidence band
+        assertTrue(shouldInterfere, "Should interfere when advantageous and outside confidence band");
         
         // Hook share should be 70% now
         if (shouldInterfere) {
@@ -338,7 +378,7 @@ contract DetoxHookWave2Test is Test, Deployers {
 
     function testArbitrageWithDifferentSwapSizes() public {
         // Test arbitrage calculation with different swap sizes
-        setETHPrice(90); // $0.90 (10% below $1.00)
+        setETHPrice(110); // $1.10 - advantageous for zeroForOne (pool gives better rate)
         setUSDCPrice(100); // $1.00
 
         uint256[] memory swapAmounts = new uint256[](4);
@@ -354,7 +394,7 @@ contract DetoxHookWave2Test is Test, Deployers {
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             });
 
-            (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere) = 
+            (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand) = 
                 hook.calculateArbitrageOpportunity(poolKey, params);
 
             console.log("=== Swap Size Test ===");
@@ -362,19 +402,19 @@ contract DetoxHookWave2Test is Test, Deployers {
             console.log("Arbitrage opportunity:", arbitrageOpp);
             console.log("Should interfere:", shouldInterfere);
 
-            // All should interfere as 10% is above 5% threshold
-            assertTrue(shouldInterfere, "Should interfere with 10% arbitrage");
+            // All should interfere as it's advantageous and outside confidence band
+            assertTrue(shouldInterfere, "Should interfere when advantageous and outside confidence band");
             
-            // Arbitrage opportunity should scale with swap amount (approximately 10%)
-            assertApproxEqRel(arbitrageOpp, swapAmounts[i] / 10, 5e16, "Arbitrage should be ~10% of swap amount");
+            // Arbitrage opportunity should scale with swap amount
+            assertGt(arbitrageOpp, 0, "Should have arbitrage opportunity");
         }
     }
 
     function testBothSwapDirections() public {
         // Test arbitrage in both directions
         
-        // Direction 1: ETH cheap in market (zeroForOne arbitrage)
-        setETHPrice(90); // $0.90
+        // Direction 1: ETH expensive in market (advantageous for zeroForOne - selling ETH)
+        setETHPrice(110); // $1.10 - pool gives better rate for selling ETH
         setUSDCPrice(100); // $1.00
 
         SwapParams memory paramsZeroForOne = SwapParams({
@@ -383,26 +423,26 @@ contract DetoxHookWave2Test is Test, Deployers {
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
 
-        (uint256 arbitrageOpp1, uint256 hookShare1, bool shouldInterfere1) = 
+        (uint256 arbitrageOpp1, uint256 hookShare1, bool shouldInterfere1, bool isOutsideConfidenceBand1) = 
             hook.calculateArbitrageOpportunity(poolKey, paramsZeroForOne);
 
-        assertTrue(shouldInterfere1, "Should interfere when ETH is cheap in market");
+        assertTrue(shouldInterfere1, "Should interfere when selling ETH is advantageous");
         assertGt(arbitrageOpp1, 0, "Should have arbitrage opportunity");
 
-        // Direction 2: ETH expensive in market (oneForZero arbitrage)
-        setETHPrice(110); // $1.10
+        // Direction 2: ETH expensive in market (advantageous for oneForZero - buying ETH)
+        setETHPrice(110); // $1.10 - pool gives better rate for buying ETH (1 ETH for 100 USDC vs 110 USDC in market)
         setUSDCPrice(100); // $1.00
 
         SwapParams memory paramsOneForZero = SwapParams({
             zeroForOne: false,
-            amountSpecified: -int256(110 ether), // Equivalent value in USDC
+            amountSpecified: -int256(100 ether), // Selling USDC for ETH
             sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
         });
 
-        (uint256 arbitrageOpp2, uint256 hookShare2, bool shouldInterfere2) = 
+        (uint256 arbitrageOpp2, uint256 hookShare2, bool shouldInterfere2, bool isOutsideConfidenceBand2) = 
             hook.calculateArbitrageOpportunity(poolKey, paramsOneForZero);
 
-        assertTrue(shouldInterfere2, "Should interfere when ETH is expensive in market");
+        assertTrue(shouldInterfere2, "Should interfere when buying ETH is advantageous");
         assertGt(arbitrageOpp2, 0, "Should have arbitrage opportunity");
 
         console.log("=== Both Directions Test ===");

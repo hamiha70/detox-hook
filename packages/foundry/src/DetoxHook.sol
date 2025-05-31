@@ -13,6 +13,7 @@ import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import { IPyth, PythStructs } from "./libraries/PythLibrary.sol";
 import { HookLibrary } from "./libraries/HookLibrary.sol";
+import { ArbitrageLib } from "./libraries/ArbitrageLib.sol";
 
 contract DetoxHook is BaseHook {
     using CurrencyLibrary for Currency;
@@ -20,7 +21,6 @@ contract DetoxHook is BaseHook {
     using PoolIdLibrary for PoolKey;
 
     // Configuration constants
-    uint256 private constant ALPHA_BPS = 500; // 5% threshold in basis points
     uint256 private constant RHO_BPS = 8000; // 80% hook share in basis points
     uint256 private constant PRICE_PRECISION = 1e8; // 8 decimal precision like USDC
     uint256 private constant STALENESS_THRESHOLD = 60; // Oracle staleness limit in seconds
@@ -41,7 +41,6 @@ contract DetoxHook is BaseHook {
     mapping(PoolId => mapping(Currency => uint256)) public accumulatedTokens;
 
     // Configurable parameters
-    uint256 public alphaBps;
     uint256 public rhoBps;
     uint256 public stalenessThreshold;
 
@@ -49,7 +48,6 @@ contract DetoxHook is BaseHook {
         owner = _owner;
         
         // Initialize configurable parameters
-        alphaBps = ALPHA_BPS;
         rhoBps = RHO_BPS;
         stalenessThreshold = STALENESS_THRESHOLD;
 
@@ -84,83 +82,88 @@ contract DetoxHook is BaseHook {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
 
-        // 2. Get currencies and oracle prices
+        // 2. Get currencies and oracle prices with confidence
         Currency inputCurrency = params.zeroForOne ? key.currency0 : key.currency1;
         Currency outputCurrency = params.zeroForOne ? key.currency1 : key.currency0;
 
-        (uint256 inputPrice, bool inputValid) = _getOraclePrice(inputCurrency);
-        (uint256 outputPrice, bool outputValid) = _getOraclePrice(outputCurrency);
+        (uint256 inputPrice, uint256 inputConf, bool inputValid) = _getOraclePriceWithConfidence(inputCurrency);
+        (uint256 outputPrice, uint256 outputConf, bool outputValid) = _getOraclePriceWithConfidence(outputCurrency);
 
         // 3. Fallback to no interference if oracle fails
         if (!inputValid || !outputValid) {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
 
-        // 4. Get pool price and calculate arbitrage opportunity
+        // 4. Get pool price and prepare arbitrage parameters
         uint256 poolPrice = _getPoolPrice(key);
         if (poolPrice == 0) {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
 
-        uint256 arbitrageOpp = _calculateArbitrageOpportunity(params, poolPrice, inputPrice, outputPrice);
+        // 5. Use ArbitrageLib to analyze opportunity with confidence bounds
+        ArbitrageLib.ArbitrageResult memory result = ArbitrageLib.analyzeArbitrageOpportunity(
+            ArbitrageLib.ArbitrageParams({
+                poolPrice: poolPrice,
+                inputPrice: inputPrice,
+                outputPrice: outputPrice,
+                inputPriceConf: inputConf,
+                outputPriceConf: outputConf,
+                exactInputAmount: uint256(-params.amountSpecified),
+                zeroForOne: params.zeroForOne
+            }),
+            rhoBps
+        );
 
-        // 5. Check if arbitrage opportunity exceeds threshold
-        if (!_shouldInterfere(arbitrageOpp, uint256(-params.amountSpecified))) {
+        // 6. Check if we should interfere (both confidence and threshold requirements)
+        if (!result.shouldInterfere) {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
 
-        // 6. Execute arbitrage capture
-        return _executeArbitrageCapture(key, params, arbitrageOpp);
+        // 7. Execute arbitrage capture
+        return _executeArbitrageCapture(key, params, result.hookShare);
     }
 
     /**
-     * @notice Get oracle price for a currency with error handling
+     * @notice Get oracle price with confidence for a currency
+     * @param currency The currency to get price for
+     * @return price The price in PRICE_PRECISION format (8 decimals)
+     * @return confidence The confidence in PRICE_PRECISION format (8 decimals)
+     * @return valid Whether the price is valid and fresh
+     */
+    function _getOraclePriceWithConfidence(Currency currency) 
+        internal 
+        view 
+        returns (uint256 price, uint256 confidence, bool valid) 
+    {
+        // Handle oracle unavailability gracefully
+        if (address(pythOracle) == address(0)) return (0, 0, false);
+
+        bytes32 priceId = pythPriceIds[currency];
+        if (priceId == bytes32(0)) return (0, 0, false);
+
+        try pythOracle.getPriceUnsafe(priceId) returns (PythStructs.Price memory pythPrice) {
+            // Check staleness
+            if (block.timestamp - pythPrice.publishTime > stalenessThreshold) {
+                return (0, 0, false);
+            }
+
+            // Convert price and confidence to PRICE_PRECISION with proper decimal handling
+            price = ArbitrageLib.normalizePythPrice(pythPrice);
+            confidence = ArbitrageLib.normalizePythConfidence(pythPrice);
+            valid = price > 0;
+        } catch {
+            return (0, 0, false);
+        }
+    }
+
+    /**
+     * @notice Get oracle price for a currency (legacy function for backward compatibility)
      * @param currency The currency to get price for
      * @return price The price in PRICE_PRECISION format (8 decimals)
      * @return valid Whether the price is valid and fresh
      */
     function _getOraclePrice(Currency currency) internal view returns (uint256 price, bool valid) {
-        // Handle oracle unavailability gracefully
-        if (address(pythOracle) == address(0)) return (0, false);
-
-        bytes32 priceId = pythPriceIds[currency];
-        if (priceId == bytes32(0)) return (0, false);
-
-        try pythOracle.getPriceUnsafe(priceId) returns (PythStructs.Price memory pythPrice) {
-            // Check staleness
-            if (block.timestamp - pythPrice.publishTime > stalenessThreshold) {
-                return (0, false);
-            }
-
-            // Convert to PRICE_PRECISION with proper decimal handling
-            price = _normalizePythPrice(pythPrice);
-            valid = price > 0;
-        } catch {
-            return (0, false);
-        }
-    }
-
-    /**
-     * @notice Normalize Pyth price to PRICE_PRECISION format
-     * @param pythPrice The Pyth price struct
-     * @return normalizedPrice Price normalized to 8 decimals
-     */
-    function _normalizePythPrice(PythStructs.Price memory pythPrice) internal pure returns (uint256) {
-        if (pythPrice.price <= 0) return 0;
-
-        uint256 price = uint256(uint64(pythPrice.price));
-        int32 exponent = pythPrice.expo;
-
-        // Convert to PRICE_PRECISION (8 decimals)
-        if (exponent >= -8) {
-            // If exponent is -8 or higher, multiply
-            uint256 multiplier = 10 ** uint256(int256(exponent + 8));
-            return price * multiplier;
-        } else {
-            // If exponent is lower than -8, divide
-            uint256 divisor = 10 ** uint256(int256(-8 - exponent));
-            return price / divisor;
-        }
+        (price, , valid) = _getOraclePriceWithConfidence(currency);
     }
 
     /**
@@ -180,71 +183,18 @@ contract DetoxHook is BaseHook {
     }
 
     /**
-     * @notice Calculate arbitrage opportunity based on price differences
-     * @param params The swap parameters
-     * @param poolPrice Pool price (currency1/currency0) with PRICE_PRECISION
-     * @param inputPrice Input currency price in USD with PRICE_PRECISION
-     * @param outputPrice Output currency price in USD with PRICE_PRECISION
-     * @return arbitrageOpp Arbitrage opportunity in input currency units
-     */
-    function _calculateArbitrageOpportunity(
-        SwapParams memory params,
-        uint256 poolPrice,
-        uint256 inputPrice,
-        uint256 outputPrice
-    ) internal pure returns (uint256) {
-        uint256 exactInputAmount = uint256(-params.amountSpecified);
-
-        // Calculate market price as output/input ratio
-        uint256 marketPrice = FullMath.mulDiv(outputPrice, PRICE_PRECISION, inputPrice);
-
-        if (params.zeroForOne) {
-            // Case 1: zeroForOne = true (currency0 → currency1)
-            // Arbitrage opportunity exists if pool values currency1 higher than market
-            if (poolPrice <= marketPrice) return 0;
-
-            uint256 priceDiff = poolPrice - marketPrice;
-            return FullMath.mulDiv(exactInputAmount, priceDiff, PRICE_PRECISION);
-        } else {
-            // Case 2: zeroForOne = false (currency1 → currency0)
-            // Arbitrage opportunity exists if pool values currency1 lower than market
-            if (poolPrice >= marketPrice) return 0;
-
-            uint256 priceDiff = marketPrice - poolPrice;
-            return FullMath.mulDiv(exactInputAmount, priceDiff, PRICE_PRECISION);
-        }
-    }
-
-    /**
-     * @notice Check if arbitrage opportunity exceeds threshold
-     * @param arbitrageOpp The arbitrage opportunity amount
-     * @param swapAmount The swap amount being processed
-     * @return shouldInterfere Whether the hook should interfere
-     */
-    function _shouldInterfere(uint256 arbitrageOpp, uint256 swapAmount) internal view returns (bool) {
-        if (arbitrageOpp == 0 || swapAmount == 0) return false;
-
-        // Check if arbitrage/swapAmount > ALPHA (5%)
-        uint256 ratio = FullMath.mulDiv(arbitrageOpp, BASIS_POINTS, swapAmount);
-        return ratio > alphaBps;
-    }
-
-    /**
      * @notice Execute arbitrage capture by taking hook's share
      * @param key The pool key
      * @param params The swap parameters
-     * @param arbitrageOpp The total arbitrage opportunity
+     * @param hookShare The amount the hook should capture
      * @return selector The function selector
      * @return delta The BeforeSwapDelta
      * @return fee The dynamic fee (unused)
      */
-    function _executeArbitrageCapture(PoolKey calldata key, SwapParams calldata params, uint256 arbitrageOpp)
+    function _executeArbitrageCapture(PoolKey calldata key, SwapParams calldata params, uint256 hookShare)
         internal
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        // Calculate hook's share (80% of arbitrage opportunity)
-        uint256 hookShare = FullMath.mulDiv(arbitrageOpp, rhoBps, BASIS_POINTS);
-
         // Determine input currency
         Currency inputCurrency = params.zeroForOne ? key.currency0 : key.currency1;
 
@@ -267,16 +217,13 @@ contract DetoxHook is BaseHook {
 
     /**
      * @notice Update hook parameters (only owner)
-     * @param _alphaBps New alpha threshold in basis points
      * @param _rhoBps New rho share in basis points
      * @param _stalenessThreshold New staleness threshold in seconds
      */
-    function updateParameters(uint256 _alphaBps, uint256 _rhoBps, uint256 _stalenessThreshold) external onlyOwner {
-        require(_alphaBps <= BASIS_POINTS, "Alpha BPS too high");
+    function updateParameters(uint256 _rhoBps, uint256 _stalenessThreshold) external onlyOwner {
         require(_rhoBps <= BASIS_POINTS, "Rho BPS too high");
         require(_stalenessThreshold > 0, "Staleness threshold must be positive");
 
-        alphaBps = _alphaBps;
         rhoBps = _rhoBps;
         stalenessThreshold = _stalenessThreshold;
     }
@@ -315,47 +262,82 @@ contract DetoxHook is BaseHook {
     }
 
     /**
-     * @notice Calculate potential arbitrage opportunity for a given swap (view function)
-     * @param key The pool key
-     * @param params The swap parameters
-     * @return arbitrageOpp The arbitrage opportunity amount
-     * @return hookShare The amount the hook would capture
-     * @return shouldInterfere Whether the hook would interfere
+     * @notice Get the current oracle price with confidence for a currency
+     * @param currency The currency to get price for
+     * @return price The price in PRICE_PRECISION format
+     * @return confidence The confidence in PRICE_PRECISION format
+     * @return valid Whether the price is valid
+     * @return publishTime The timestamp when the price was published
      */
-    function calculateArbitrageOpportunity(PoolKey calldata key, SwapParams calldata params)
-        external
-        view
-        returns (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere)
+    function getOraclePriceWithConfidence(Currency currency) 
+        external 
+        view 
+        returns (uint256 price, uint256 confidence, bool valid, uint256 publishTime) 
     {
-        if (params.amountSpecified >= 0) return (0, 0, false);
+        (price, confidence, valid) = _getOraclePriceWithConfidence(currency);
 
-        Currency inputCurrency = params.zeroForOne ? key.currency0 : key.currency1;
-        Currency outputCurrency = params.zeroForOne ? key.currency1 : key.currency0;
-
-        (uint256 inputPrice, bool inputValid) = _getOraclePrice(inputCurrency);
-        (uint256 outputPrice, bool outputValid) = _getOraclePrice(outputCurrency);
-
-        if (!inputValid || !outputValid) return (0, 0, false);
-
-        uint256 poolPrice = _getPoolPrice(key);
-        if (poolPrice == 0) return (0, 0, false);
-
-        arbitrageOpp = _calculateArbitrageOpportunity(params, poolPrice, inputPrice, outputPrice);
-        shouldInterfere = _shouldInterfere(arbitrageOpp, uint256(-params.amountSpecified));
-
-        if (shouldInterfere) {
-            hookShare = FullMath.mulDiv(arbitrageOpp, rhoBps, BASIS_POINTS);
+        if (valid && address(pythOracle) != address(0)) {
+            bytes32 priceId = pythPriceIds[currency];
+            if (priceId != bytes32(0)) {
+                try pythOracle.getPriceUnsafe(priceId) returns (PythStructs.Price memory pythPrice) {
+                    publishTime = pythPrice.publishTime;
+                } catch {
+                    publishTime = 0;
+                }
+            }
         }
     }
 
     /**
+     * @notice Calculate potential arbitrage opportunity for a given swap (view function)
+     * @param key The pool key
+     * @param params The swap parameters
+     * @return arbitrageOpp The arbitrage opportunity amount (confidence-adjusted)
+     * @return hookShare The amount the hook would capture
+     * @return shouldInterfere Whether the hook would interfere
+     * @return isOutsideConfidenceBand Whether pool price is outside oracle confidence band
+     */
+    function calculateArbitrageOpportunity(PoolKey calldata key, SwapParams calldata params)
+        external
+        view
+        returns (uint256 arbitrageOpp, uint256 hookShare, bool shouldInterfere, bool isOutsideConfidenceBand)
+    {
+        if (params.amountSpecified >= 0) return (0, 0, false, false);
+
+        Currency inputCurrency = params.zeroForOne ? key.currency0 : key.currency1;
+        Currency outputCurrency = params.zeroForOne ? key.currency1 : key.currency0;
+
+        (uint256 inputPrice, uint256 inputConf, bool inputValid) = _getOraclePriceWithConfidence(inputCurrency);
+        (uint256 outputPrice, uint256 outputConf, bool outputValid) = _getOraclePriceWithConfidence(outputCurrency);
+
+        if (!inputValid || !outputValid) return (0, 0, false, false);
+
+        uint256 poolPrice = _getPoolPrice(key);
+        if (poolPrice == 0) return (0, 0, false, false);
+
+        ArbitrageLib.ArbitrageResult memory result = ArbitrageLib.analyzeArbitrageOpportunity(
+            ArbitrageLib.ArbitrageParams({
+                poolPrice: poolPrice,
+                inputPrice: inputPrice,
+                outputPrice: outputPrice,
+                inputPriceConf: inputConf,
+                outputPriceConf: outputConf,
+                exactInputAmount: uint256(-params.amountSpecified),
+                zeroForOne: params.zeroForOne
+            }),
+            rhoBps
+        );
+
+        return (result.arbitrageOpportunity, result.hookShare, result.shouldInterfere, result.isOutsideConfidenceBand);
+    }
+
+    /**
      * @notice Get current parameters
-     * @return alphaBps Current alpha threshold in basis points
      * @return rhoBps Current rho share in basis points
      * @return stalenessThreshold Current staleness threshold in seconds
      */
-    function getParameters() external view returns (uint256, uint256, uint256) {
-        return (alphaBps, rhoBps, stalenessThreshold);
+    function getParameters() external view returns (uint256, uint256) {
+        return (rhoBps, stalenessThreshold);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
