@@ -15,7 +15,7 @@ contract DetoxHookLocalSimple is Test {
     // Local deployment address (from localhost:3001 explorer)
     address constant LOCAL_DETOX_HOOK = 0x700b6A60ce7EaaEA56F065753d8dcB9653dbAD35;
     
-    function test_LocalDeploymentExists() public {
+    function test_LocalDeploymentExists() public view {
         // Check if contract exists
         uint256 codeSize;
         assembly {
@@ -30,7 +30,7 @@ contract DetoxHookLocalSimple is Test {
             console.log("[SUCCESS] Contract exists locally");
             
             // Try to interact with it
-            DetoxHook hook = DetoxHook(LOCAL_DETOX_HOOK);
+            DetoxHook hook = DetoxHook(payable(LOCAL_DETOX_HOOK));
             
             try hook.poolManager() returns (IPoolManager pm) {
                 console.log("[SUCCESS] Contract is callable");

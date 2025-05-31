@@ -52,15 +52,11 @@ contract DetoxHookTest is Test, Deployers {
         
         // Deploy DetoxHook to the correct address
         // The hook address must have the correct permissions bits set
-        uint160 hookAddress = uint160(
-            type(uint160).max & clearAllHookPermissionsMask 
-            | Hooks.BEFORE_SWAP_FLAG 
-            | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
-        );
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG));
         
         // Deploy the hook using CREATE2 to get the correct address
-        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(0)), address(hookAddress));
-        hook = DetoxHook(address(hookAddress));
+        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(0)), hookAddress);
+        hook = DetoxHook(payable(hookAddress));
         
         // Create pool key
         poolKey = PoolKey({

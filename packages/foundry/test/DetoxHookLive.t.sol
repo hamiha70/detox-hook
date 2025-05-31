@@ -26,11 +26,11 @@ contract DetoxHookLive is Test {
         vm.selectFork(forkId);
         
         // Connect to deployed contracts
-        hook = DetoxHook(DETOX_HOOK);
+        hook = DetoxHook(payable(DETOX_HOOK));
         poolManager = IPoolManager(POOL_MANAGER);
     }
     
-    function test_DeployedHookExists() public {
+    function test_DeployedHookExists() public view {
         // Verify the hook contract exists and has code
         uint256 codeSize;
         assembly {
@@ -41,7 +41,7 @@ contract DetoxHookLive is Test {
         console.log("Hook contract code size:", codeSize);
     }
     
-    function test_HookPoolManagerConnection() public {
+    function test_HookPoolManagerConnection() public view {
         // Verify the hook is connected to the correct pool manager
         address hookPoolManager = address(hook.poolManager());
         assertEq(hookPoolManager, POOL_MANAGER, "Hook should be connected to correct PoolManager");
@@ -49,7 +49,7 @@ contract DetoxHookLive is Test {
         console.log("Expected PoolManager:", POOL_MANAGER);
     }
     
-    function test_HookPermissions() public {
+    function test_HookPermissions() public pure {
         // Test hook permissions
         uint160 permissions = uint160(DETOX_HOOK);
         
@@ -66,7 +66,7 @@ contract DetoxHookLive is Test {
         console.log("Has beforeSwapReturnDelta:", hasBeforeSwapReturnDelta);
     }
     
-    function test_HookGetPermissions() public {
+    function test_HookGetPermissions() public view {
         // Test the getHookPermissions function
         Hooks.Permissions memory permissions = hook.getHookPermissions();
         
@@ -81,7 +81,7 @@ contract DetoxHookLive is Test {
         console.log("  afterSwap:", permissions.afterSwap);
     }
     
-    function test_PoolManagerExists() public {
+    function test_PoolManagerExists() public view {
         // Verify the PoolManager exists and has code
         uint256 codeSize;
         assembly {
@@ -92,7 +92,7 @@ contract DetoxHookLive is Test {
         console.log("PoolManager contract code size:", codeSize);
     }
     
-    function test_ContractInteraction() public {
+    function test_ContractInteraction() public view {
         // Test basic contract interaction
         try hook.poolManager() returns (IPoolManager pm) {
             assertEq(address(pm), POOL_MANAGER, "PoolManager should match");
@@ -102,7 +102,7 @@ contract DetoxHookLive is Test {
         }
     }
     
-    function test_DeploymentInfo() public {
+    function test_DeploymentInfo() public view {
         console.log("=== Deployment Information ===");
         console.log("Chain ID:", block.chainid);
         console.log("Block Number:", block.number);

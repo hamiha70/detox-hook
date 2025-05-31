@@ -15,6 +15,7 @@ import { IPyth, PythStructs } from "./libraries/PythLibrary.sol";
 import { HookLibrary } from "./libraries/HookLibrary.sol";
 import { ArbitrageLib } from "./libraries/ArbitrageLib.sol";
 import { OracleLib } from "./libraries/OracleLib.sol";
+import { IERC20Minimal } from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 
 contract DetoxHook is BaseHook {
     using CurrencyLibrary for Currency;
@@ -190,6 +191,10 @@ contract DetoxHook is BaseHook {
             ? toBeforeSwapDelta(int128(int256(hookShare)), 0)
             : toBeforeSwapDelta(0, int128(int256(hookShare)));
 
+        // Emit arbitrage capture event
+        // Note: We don't have the full arbitrage opportunity here, so we'll emit hookShare as a proxy
+        emit ArbitrageCaptured(poolId, inputCurrency, hookShare, hookShare, params.zeroForOne);
+
         return (BaseHook.beforeSwap.selector, delta, 0);
     }
 
@@ -204,8 +209,13 @@ contract DetoxHook is BaseHook {
         require(_rhoBps <= BASIS_POINTS, "Rho BPS too high");
         require(_stalenessThreshold > 0, "Staleness threshold must be positive");
 
+        uint256 oldRhoBps = rhoBps;
+        uint256 oldStaleness = stalenessThreshold;
+
         rhoBps = _rhoBps;
         stalenessThreshold = _stalenessThreshold;
+
+        emit ParametersUpdated(oldRhoBps, _rhoBps, oldStaleness, _stalenessThreshold);
     }
 
     /**
@@ -214,7 +224,82 @@ contract DetoxHook is BaseHook {
      * @param priceId The Pyth price ID
      */
     function setPriceId(Currency currency, bytes32 priceId) external onlyOwner {
+        bytes32 oldPriceId = pythPriceIds[currency];
         pythPriceIds[currency] = priceId;
+        emit PriceIdUpdated(currency, oldPriceId, priceId);
+    }
+
+    /**
+     * @notice Withdraw accumulated ETH from arbitrage capture (only owner)
+     * @param poolId The pool ID to withdraw from
+     * @param amount The amount to withdraw in wei
+     * @param recipient The address to send ETH to
+     */
+    function withdrawAccumulatedETH(
+        PoolId poolId, 
+        uint256 amount, 
+        address payable recipient
+    ) external onlyOwner {
+        require(recipient != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be greater than zero");
+        
+        Currency ethCurrency = Currency.wrap(address(0));
+        uint256 available = accumulatedTokens[poolId][ethCurrency];
+        require(available >= amount, "Insufficient accumulated ETH");
+        
+        // Update accumulated tokens
+        accumulatedTokens[poolId][ethCurrency] -= amount;
+        
+        // Transfer ETH to recipient
+        recipient.transfer(amount);
+        
+        emit ETHWithdrawn(poolId, amount, recipient);
+    }
+
+    /**
+     * @notice Withdraw accumulated ERC20 tokens from arbitrage capture (only owner)
+     * @param poolId The pool ID to withdraw from
+     * @param currency The ERC20 currency to withdraw (must not be ETH)
+     * @param amount The amount to withdraw
+     * @param recipient The address to send tokens to
+     */
+    function withdrawAccumulatedERC20(
+        PoolId poolId, 
+        Currency currency, 
+        uint256 amount, 
+        address recipient
+    ) external onlyOwner {
+        require(recipient != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be greater than zero");
+        require(Currency.unwrap(currency) != address(0), "Use withdrawAccumulatedETH for ETH");
+        
+        uint256 available = accumulatedTokens[poolId][currency];
+        require(available >= amount, "Insufficient accumulated tokens");
+        
+        // Update accumulated tokens
+        accumulatedTokens[poolId][currency] -= amount;
+        
+        // Transfer ERC20 tokens to recipient
+        IERC20Minimal(Currency.unwrap(currency)).transfer(recipient, amount);
+        
+        emit ERC20Withdrawn(poolId, currency, amount, recipient);
+    }
+
+    /**
+     * @notice Get accumulated tokens for a pool and currency
+     * @param poolId The pool ID
+     * @param currency The currency
+     * @return amount The accumulated amount
+     */
+    function getAccumulatedTokens(PoolId poolId, Currency currency) external view returns (uint256) {
+        return accumulatedTokens[poolId][currency];
+    }
+
+    /**
+     * @notice Allow contract to receive ETH
+     */
+    receive() external payable {
+        // Contract can receive ETH for arbitrage capture
     }
 
     // ============ View Functions ============
@@ -326,4 +411,65 @@ contract DetoxHook is BaseHook {
             afterRemoveLiquidityReturnDelta: false
         });
     }
+
+    // ============ Events ============
+
+    /**
+     * @notice Emitted when arbitrage is captured during a swap
+     * @param poolId The pool ID
+     * @param currency The input currency
+     * @param hookShare The amount captured by the hook
+     * @param arbitrageOpportunity The total arbitrage opportunity detected
+     * @param zeroForOne The swap direction
+     */
+    event ArbitrageCaptured(
+        PoolId indexed poolId, 
+        Currency indexed currency, 
+        uint256 hookShare, 
+        uint256 arbitrageOpportunity,
+        bool zeroForOne
+    );
+
+    /**
+     * @notice Emitted when hook parameters are updated
+     * @param oldRhoBps The previous rho share in basis points
+     * @param newRhoBps The new rho share in basis points
+     * @param oldStaleness The previous staleness threshold
+     * @param newStaleness The new staleness threshold
+     */
+    event ParametersUpdated(
+        uint256 oldRhoBps, 
+        uint256 newRhoBps, 
+        uint256 oldStaleness, 
+        uint256 newStaleness
+    );
+
+    /**
+     * @notice Emitted when a price ID is updated for a currency
+     * @param currency The currency whose price ID was updated
+     * @param oldPriceId The previous price ID
+     * @param newPriceId The new price ID
+     */
+    event PriceIdUpdated(
+        Currency indexed currency, 
+        bytes32 oldPriceId, 
+        bytes32 newPriceId
+    );
+
+    /**
+     * @notice Emitted when accumulated ETH are withdrawn
+     * @param poolId The pool ID
+     * @param amount The amount withdrawn in wei
+     * @param recipient The recipient address
+     */
+    event ETHWithdrawn(PoolId indexed poolId, uint256 amount, address indexed recipient);
+
+    /**
+     * @notice Emitted when accumulated ERC20 tokens are withdrawn
+     * @param poolId The pool ID
+     * @param currency The currency withdrawn
+     * @param amount The amount withdrawn
+     * @param recipient The recipient address
+     */
+    event ERC20Withdrawn(PoolId indexed poolId, Currency indexed currency, uint256 amount, address indexed recipient);
 } 

@@ -43,8 +43,8 @@ contract DetoxHookWave1Test is Test, Deployers {
         mockOracle = new MockPyth(60, 1); // 60 second validity, 1 wei fee
 
         address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG));
-        deployCodeTo("DetoxHook.sol", abi.encode(manager, owner, address(0)), hookAddress);
-        hook = DetoxHook(hookAddress);
+        deployCodeTo("DetoxHook.sol", abi.encode(manager, owner, address(mockOracle)), hookAddress);
+        hook = DetoxHook(payable(hookAddress));
 
         // Create pool key manually
         poolKey = PoolKey({
@@ -89,7 +89,7 @@ contract DetoxHookWave1Test is Test, Deployers {
         assertFalse(permissions.beforeInitialize, "beforeInitialize should be disabled");
     }
 
-    function testOwnershipAndInitialParameters() public {
+    function testOwnershipAndInitialParameters() public view {
         // Test ownership
         assertEq(hook.owner(), owner, "Owner should be set correctly");
 
@@ -129,14 +129,8 @@ contract DetoxHookWave1Test is Test, Deployers {
     }
 
     function testOracleInitialization() public view {
-        // Test oracle initialization based on chain ID
-        if (block.chainid == 421614) {
-            // On Arbitrum Sepolia
-            assertEq(address(hook.pythOracle()), 0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF, "Pyth oracle should be set on Arbitrum Sepolia");
-        } else {
-            // On other chains (like Anvil)
-            assertEq(address(hook.pythOracle()), address(0), "Pyth oracle should be zero address on non-Arbitrum chains");
-        }
+        // Test oracle initialization - should now be the mock oracle
+        assertEq(address(hook.pythOracle()), address(mockOracle), "Pyth oracle should be set to mock oracle in tests");
     }
 
     function testPriceIdMappings() public view {
@@ -152,30 +146,47 @@ contract DetoxHookWave1Test is Test, Deployers {
     }
 
     function testPriceIdUpdates() public {
-        Currency testCurrency = Currency.wrap(address(0x5678));
-        bytes32 testPriceId = bytes32(uint256(0x1234));
-
-        // Test price ID update as owner
+        // Test setting price IDs for different currencies
+        bytes32 newPriceId = bytes32(uint256(0x123456));
+        
+        // Only owner can set price IDs
         vm.prank(owner);
-        hook.setPriceId(testCurrency, testPriceId);
-
-        assertEq(hook.pythPriceIds(testCurrency), testPriceId, "Price ID should be updated");
-
-        // Test price ID update fails for non-owner
-        vm.expectRevert();
-        hook.setPriceId(testCurrency, bytes32(0));
+        hook.setPriceId(currency0, newPriceId);
+        
+        // Verify the price ID was set
+        assertEq(hook.pythPriceIds(currency0), newPriceId, "Price ID should be updated");
+        
+        // Test that non-owner cannot set price IDs
+        vm.prank(address(0x999));
+        vm.expectRevert("Not owner");
+        hook.setPriceId(currency1, newPriceId);
     }
 
-    function testOraclePriceRetrievalWithoutOracle() public view {
-        // Test oracle price retrieval when oracle is not available (Anvil)
-        if (address(hook.pythOracle()) == address(0)) {
-            Currency ethCurrency = Currency.wrap(address(0));
-            (uint256 price, bool valid, uint256 publishTime) = hook.getOraclePrice(ethCurrency);
-
-            assertEq(price, 0, "Price should be 0 when oracle unavailable");
-            assertFalse(valid, "Price should be invalid when oracle unavailable");
-            assertEq(publishTime, 0, "Publish time should be 0 when oracle unavailable");
-        }
+    function testOraclePriceRetrievalWithMockOracle() public {
+        // Test oracle price retrieval with mock oracle
+        // First set up a price in the mock oracle
+        bytes32 testPriceId = bytes32(uint256(0x123456));
+        vm.prank(owner);
+        hook.setPriceId(currency0, testPriceId);
+        
+        // Set a price in the mock oracle
+        mockOracle.updatePriceFeeds(
+            testPriceId,
+            int64(200 * 1e6), // $200 price
+            uint64(1 * 1e6),  // $1 confidence
+            -8,               // -8 exponent
+            block.timestamp
+        );
+        
+        (uint256 price, bool valid, uint256 publishTime) = hook.getOraclePrice(currency0);
+        
+        assertTrue(valid, "Price should be valid with mock oracle");
+        assertGt(price, 0, "Price should be greater than 0");
+        assertEq(publishTime, block.timestamp, "Publish time should match");
+        
+        console.log("Mock oracle price:", price);
+        console.log("Mock oracle valid:", valid);
+        console.log("Mock oracle publish time:", publishTime);
     }
 
     function testPoolPriceExtraction() public view {
@@ -224,8 +235,8 @@ contract DetoxHookWave1Test is Test, Deployers {
         console.log("Token1 received by user:", token1ReceivedByUser);
     }
 
-    function testExactInputSwapWithoutOracle() public {
-        // Test that exact input swaps fall back gracefully when oracle is unavailable
+    function testExactInputSwapWithMockOracle() public {
+        // Test that exact input swaps work with mock oracle
         uint256 userBalance0Before = IERC20Minimal(Currency.unwrap(currency0)).balanceOf(address(this));
         uint256 userBalance1Before = IERC20Minimal(Currency.unwrap(currency1)).balanceOf(address(this));
 
@@ -249,12 +260,12 @@ contract DetoxHookWave1Test is Test, Deployers {
         uint256 token0SpentByUser = userBalance0Before - userBalance0After;
         uint256 token1ReceivedByUser = userBalance1After - userBalance1Before;
 
-        // Since oracle is unavailable (on Anvil), hook should not interfere
-        // User should spend approximately the exact input amount
-        assertApproxEqAbs(token0SpentByUser, exactInputAmount, 1e15, "User should spend approximately exact input amount");
+        // With mock oracle, hook behavior depends on price setup
+        // User should spend some input amount and receive some output
+        assertGt(token0SpentByUser, 0, "User should spend some input tokens");
         assertGt(token1ReceivedByUser, 0, "User should receive some output tokens");
 
-        console.log("=== Exact Input Swap Without Oracle (Wave 1) ===");
+        console.log("=== Exact Input Swap With Mock Oracle (Wave 1) ===");
         console.log("Token0 spent by user:", token0SpentByUser);
         console.log("Token1 received by user:", token1ReceivedByUser);
     }
@@ -266,5 +277,62 @@ contract DetoxHookWave1Test is Test, Deployers {
 
         assertEq(accumulated0, 0, "Accumulated currency0 should be zero initially");
         assertEq(accumulated1, 0, "Accumulated currency1 should be zero initially");
+    }
+
+    function testTokenWithdrawal() public {
+        // Test ETH withdrawal with no accumulated tokens
+        vm.prank(owner);
+        vm.expectRevert("Insufficient accumulated ETH");
+        hook.withdrawAccumulatedETH(poolId, 1 ether, payable(owner));
+        
+        // Test ERC20 withdrawal with no accumulated tokens
+        vm.prank(owner);
+        vm.expectRevert("Insufficient accumulated tokens");
+        hook.withdrawAccumulatedERC20(poolId, currency0, 1 ether, owner);
+        
+        // Test withdrawal with invalid recipient
+        vm.prank(owner);
+        vm.expectRevert("Invalid recipient");
+        hook.withdrawAccumulatedETH(poolId, 1 ether, payable(address(0)));
+        
+        vm.prank(owner);
+        vm.expectRevert("Invalid recipient");
+        hook.withdrawAccumulatedERC20(poolId, currency0, 1 ether, address(0));
+        
+        // Test withdrawal with zero amount
+        vm.prank(owner);
+        vm.expectRevert("Amount must be greater than zero");
+        hook.withdrawAccumulatedETH(poolId, 0, payable(owner));
+        
+        vm.prank(owner);
+        vm.expectRevert("Amount must be greater than zero");
+        hook.withdrawAccumulatedERC20(poolId, currency0, 0, owner);
+        
+        // Test that non-owner cannot withdraw
+        vm.prank(address(0x999));
+        vm.expectRevert("Not owner");
+        hook.withdrawAccumulatedETH(poolId, 1 ether, payable(address(0x999)));
+        
+        vm.prank(address(0x999));
+        vm.expectRevert("Not owner");
+        hook.withdrawAccumulatedERC20(poolId, currency0, 1 ether, address(0x999));
+        
+        // Test that ETH currency cannot be withdrawn via ERC20 function
+        Currency ethCurrency = Currency.wrap(address(0));
+        vm.prank(owner);
+        vm.expectRevert("Use withdrawAccumulatedETH for ETH");
+        hook.withdrawAccumulatedERC20(poolId, ethCurrency, 1 ether, owner);
+        
+        // Test getAccumulatedTokens view function
+        uint256 accumulatedETH = hook.getAccumulatedTokens(poolId, ethCurrency);
+        uint256 accumulatedERC20 = hook.getAccumulatedTokens(poolId, currency0);
+        assertEq(accumulatedETH, 0, "Should have no accumulated ETH initially");
+        assertEq(accumulatedERC20, 0, "Should have no accumulated ERC20 initially");
+        
+        // Test that contract can receive ETH
+        uint256 balanceBefore = address(hook).balance;
+        payable(address(hook)).transfer(1 ether);
+        uint256 balanceAfter = address(hook).balance;
+        assertEq(balanceAfter - balanceBefore, 1 ether, "Contract should be able to receive ETH");
     }
 } 

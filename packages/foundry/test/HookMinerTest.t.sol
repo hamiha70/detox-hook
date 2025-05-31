@@ -58,7 +58,7 @@ contract HookMinerTest is Test {
         console.log("HookMiner test passed!");
     }
     
-    function test_HookMinerComputeAddress() public view {
+    function test_HookMinerComputeAddress() public pure {
         console.log("=== Testing HookMiner.computeAddress() ===");
         
         // Use a known salt for testing
@@ -119,7 +119,7 @@ contract HookMinerTest is Test {
         console.log("HookMiner consistency test passed!");
     }
     
-    function test_HookMinerFlagMask() public view {
+    function test_HookMinerFlagMask() public pure {
         console.log("=== Testing HookMiner FLAG_MASK ===");
         console.log("HookMiner.FLAG_MASK:", HookMiner.FLAG_MASK);
         console.log("Hooks.ALL_HOOK_MASK:", Hooks.ALL_HOOK_MASK);

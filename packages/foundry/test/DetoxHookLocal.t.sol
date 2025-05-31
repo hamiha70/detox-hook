@@ -143,7 +143,7 @@ contract DetoxHookLocal is Test, Deployers {
         require(deployedAddress != address(0), "Hook deployment failed");
         require(deployedAddress == expectedAddress, "Deployment address mismatch");
         
-        hook = DetoxHook(deployedAddress);
+        hook = DetoxHook(payable(deployedAddress));
         
         console.log("=== Hook Deployed Successfully (Local) ===");
         console.log("Hook address:", address(hook));
@@ -310,7 +310,7 @@ contract DetoxHookLocal is Test, Deployers {
         console.log("Liquidity after:", liquidityAfter);
     }
     
-    function test_DeploymentInfo() public {
+    function test_DeploymentInfo() public view {
         console.log("=== Local Deployment Information ===");
         console.log("Network: Local Anvil");
         console.log("DetoxHook Address:", address(hook));

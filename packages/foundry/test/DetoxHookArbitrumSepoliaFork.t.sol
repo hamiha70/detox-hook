@@ -136,7 +136,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         
         // Prepare creation code and constructor arguments
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(address(manager), address(this), address(0));
+        bytes memory constructorArgs = abi.encode(address(manager), address(this), 0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF);
         
         // Mine the salt using HookMiner
         address expectedAddress;
@@ -165,7 +165,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         address deployedAddress = address(bytes20(returnData));
         require(deployedAddress == expectedAddress, "Deployment address mismatch");
         
-        hook = DetoxHook(deployedAddress);
+        hook = DetoxHook(payable(deployedAddress));
         
         console.log("=== Hook Deployed Successfully ===");
         console.log("Hook address:", address(hook));

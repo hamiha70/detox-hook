@@ -412,7 +412,7 @@ contract DeployDetoxHookScriptTest is Test {
                     console.log("DetoxHook deployment successful!");
                     
                     // Try to call a function on the deployed contract
-                    DetoxHook localDeployedHook = DetoxHook(deployedAddress);
+                    DetoxHook localDeployedHook = DetoxHook(payable(deployedAddress));
                     try localDeployedHook.poolManager() returns (IPoolManager pm) {
                         console.log("Contract is functional, poolManager:", address(pm));
                     } catch {

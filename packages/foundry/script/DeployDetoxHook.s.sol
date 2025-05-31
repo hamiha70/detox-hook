@@ -180,7 +180,7 @@ contract DeployDetoxHook is Script {
         // The CREATE2 Deployer returns 20 bytes (raw address), not ABI-encoded
         require(returnData.length == 20, "Invalid return data length");
         address deployedAddress = address(bytes20(returnData));
-        hook = DetoxHook(deployedAddress);
+        hook = DetoxHook(payable(deployedAddress));
 
         return hook;
     }
@@ -243,7 +243,7 @@ contract DeployDetoxHook is Script {
     /// @notice Set Pool Manager address for a specific chain (only for testing)
     /// @param chainId The chain ID
     /// @param poolManager The Pool Manager address
-    function setPoolManagerAddress(uint256 chainId, address poolManager) external {
+    function setPoolManagerAddress(uint256 chainId, address poolManager) external view {
         require(msg.sender == tx.origin, "Only EOA can set addresses");
         require(chainId == ChainAddresses.LOCAL_ANVIL, "Can only set address for local testing");
         
