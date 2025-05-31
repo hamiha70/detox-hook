@@ -49,7 +49,7 @@ contract MockPyth is IPyth {
     }
 
     /**
-     * @notice Set a price for testing
+     * @notice Update price feeds (compatible with existing tests)
      * @param id Price feed id
      * @param price Price value
      * @param conf Confidence interval

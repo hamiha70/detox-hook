@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import { ArbitrageLib } from "../src/libraries/ArbitrageLib.sol";
+import { OracleLib } from "../src/libraries/OracleLib.sol";
 import { PythStructs } from "../src/libraries/PythLibrary.sol";
 
 /**
@@ -289,8 +290,9 @@ contract ArbitrageLibTest is Test {
             publishTime: block.timestamp
         });
 
-        uint256 normalized = ArbitrageLib.normalizePythConfidence(pythPrice);
-        // expo = -2, target = -8, so multiply by 10^(-2 + 8) = 10^6
+        uint256 normalized = OracleLib.normalizePythConfidence(pythPrice);
+        // expo = -2, target = -8, so need to multiply by 10^6 to get more precision
+        // 10 * 10^6 = 10,000,000
         assertEq(normalized, 10 * 1e6, "Confidence normalization incorrect");
     }
 
@@ -302,8 +304,9 @@ contract ArbitrageLibTest is Test {
             publishTime: block.timestamp
         });
 
-        uint256 normalized = ArbitrageLib.normalizePythConfidence(pythPrice);
-        // expo = -11, target = -8, so divide by 10^(-8 - (-11)) = 10^3
+        uint256 normalized = OracleLib.normalizePythConfidence(pythPrice);
+        // expo = -11, target = -8, so need to divide by 10^3 to reduce precision
+        // 1000000000 / 1000 = 1000000
         assertEq(normalized, 1000000000 / 1000, "Confidence normalization incorrect");
     }
 
@@ -315,7 +318,7 @@ contract ArbitrageLibTest is Test {
             publishTime: block.timestamp
         });
 
-        uint256 normalized = ArbitrageLib.normalizePythConfidence(pythPrice);
+        uint256 normalized = OracleLib.normalizePythConfidence(pythPrice);
         assertEq(normalized, 0, "Zero confidence should return zero");
     }
 
@@ -402,7 +405,9 @@ contract ArbitrageLibTest is Test {
             publishTime: block.timestamp
         });
 
-        uint256 normalized = ArbitrageLib.normalizePythPrice(pythPrice);
+        uint256 normalized = OracleLib.normalizePythPrice(pythPrice);
+        // expo = -2, target = -8, so need to multiply by 10^6
+        // 2000 * 10^6 = 2,000,000,000
         assertEq(normalized, 2000 * 1e6, "Price normalization incorrect");
     }
 } 

@@ -14,6 +14,7 @@ import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import { IPyth, PythStructs } from "./libraries/PythLibrary.sol";
 import { HookLibrary } from "./libraries/HookLibrary.sol";
 import { ArbitrageLib } from "./libraries/ArbitrageLib.sol";
+import { OracleLib } from "./libraries/OracleLib.sol";
 
 contract DetoxHook is BaseHook {
     using CurrencyLibrary for Currency;
@@ -126,34 +127,13 @@ contract DetoxHook is BaseHook {
     /**
      * @notice Get oracle price with confidence for a currency
      * @param currency The currency to get price for
-     * @return price The price in PRICE_PRECISION format (8 decimals)
-     * @return confidence The confidence in PRICE_PRECISION format (8 decimals)
+     * @return price The price in PRICE_PRECISION format
+     * @return confidence The confidence in PRICE_PRECISION format
      * @return valid Whether the price is valid and fresh
      */
-    function _getOraclePriceWithConfidence(Currency currency) 
-        internal 
-        view 
-        returns (uint256 price, uint256 confidence, bool valid) 
-    {
-        // Handle oracle unavailability gracefully
-        if (address(pythOracle) == address(0)) return (0, 0, false);
-
+    function _getOraclePriceWithConfidence(Currency currency) internal view returns (uint256 price, uint256 confidence, bool valid) {
         bytes32 priceId = pythPriceIds[currency];
-        if (priceId == bytes32(0)) return (0, 0, false);
-
-        try pythOracle.getPriceUnsafe(priceId) returns (PythStructs.Price memory pythPrice) {
-            // Check staleness
-            if (block.timestamp - pythPrice.publishTime > stalenessThreshold) {
-                return (0, 0, false);
-            }
-
-            // Convert price and confidence to PRICE_PRECISION with proper decimal handling
-            price = ArbitrageLib.normalizePythPrice(pythPrice);
-            confidence = ArbitrageLib.normalizePythConfidence(pythPrice);
-            valid = price > 0;
-        } catch {
-            return (0, 0, false);
-        }
+        return OracleLib.getOraclePriceWithConfidence(pythOracle, priceId, stalenessThreshold);
     }
 
     /**
@@ -248,16 +228,10 @@ contract DetoxHook is BaseHook {
      */
     function getOraclePrice(Currency currency) external view returns (uint256 price, bool valid, uint256 publishTime) {
         (price, valid) = _getOraclePrice(currency);
-
-        if (valid && address(pythOracle) != address(0)) {
+        
+        if (valid) {
             bytes32 priceId = pythPriceIds[currency];
-            if (priceId != bytes32(0)) {
-                try pythOracle.getPriceUnsafe(priceId) returns (PythStructs.Price memory pythPrice) {
-                    publishTime = pythPrice.publishTime;
-                } catch {
-                    publishTime = 0;
-                }
-            }
+            publishTime = OracleLib.getPublishTime(pythOracle, priceId);
         }
     }
 
@@ -276,15 +250,9 @@ contract DetoxHook is BaseHook {
     {
         (price, confidence, valid) = _getOraclePriceWithConfidence(currency);
 
-        if (valid && address(pythOracle) != address(0)) {
+        if (valid) {
             bytes32 priceId = pythPriceIds[currency];
-            if (priceId != bytes32(0)) {
-                try pythOracle.getPriceUnsafe(priceId) returns (PythStructs.Price memory pythPrice) {
-                    publishTime = pythPrice.publishTime;
-                } catch {
-                    publishTime = 0;
-                }
-            }
+            publishTime = OracleLib.getPublishTime(pythOracle, priceId);
         }
     }
 

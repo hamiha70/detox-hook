@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import { PythStructs } from "../libraries/PythLibrary.sol";
 
 /**
  * @title ArbitrageLib
@@ -195,52 +194,6 @@ library ArbitrageLib {
         // Calculate hook share if we're interfering
         if (result.shouldInterfere) {
             result.hookShare = calculateHookShare(result.arbitrageOpportunity, rhoBps);
-        }
-    }
-
-    /**
-     * @notice Normalize Pyth price to PRICE_PRECISION format
-     * @param pythPrice The Pyth price struct
-     * @return normalizedPrice Price normalized to 8 decimals
-     */
-    function normalizePythPrice(PythStructs.Price memory pythPrice) internal pure returns (uint256) {
-        if (pythPrice.price <= 0) return 0;
-
-        uint256 price = uint256(uint64(pythPrice.price));
-        int32 exponent = pythPrice.expo;
-
-        // Convert to PRICE_PRECISION (8 decimals)
-        if (exponent >= -8) {
-            // If exponent is -8 or higher, multiply
-            uint256 multiplier = 10 ** uint256(int256(exponent + 8));
-            return price * multiplier;
-        } else {
-            // If exponent is lower than -8, divide
-            uint256 divisor = 10 ** uint256(int256(-8 - exponent));
-            return price / divisor;
-        }
-    }
-
-    /**
-     * @notice Normalize Pyth confidence to PRICE_PRECISION format
-     * @param pythPrice The Pyth price struct
-     * @return normalizedConf Confidence normalized to 8 decimals
-     */
-    function normalizePythConfidence(PythStructs.Price memory pythPrice) internal pure returns (uint256) {
-        if (pythPrice.conf == 0) return 0;
-
-        uint256 conf = uint256(pythPrice.conf);
-        int32 exponent = pythPrice.expo;
-
-        // Convert to PRICE_PRECISION (8 decimals) using same logic as price
-        if (exponent >= -8) {
-            // If exponent is -8 or higher, multiply
-            uint256 multiplier = 10 ** uint256(int256(exponent + 8));
-            return conf * multiplier;
-        } else {
-            // If exponent is lower than -8, divide
-            uint256 divisor = 10 ** uint256(int256(-8 - exponent));
-            return conf / divisor;
         }
     }
 
