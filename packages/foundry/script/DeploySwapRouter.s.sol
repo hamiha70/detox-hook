@@ -3,10 +3,11 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import {SwapRouter, IPoolSwapTest} from "../src/swapRouter.sol";
+import {SwapRouter, IPoolSwapTest} from "../src/SwapRouter.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {ChainAddresses} from "./ChainAddresses.sol";
 
 /// @title DeploySwapRouter
@@ -54,6 +55,9 @@ contract DeploySwapRouter is Script {
             "/address/",
             vm.toString(address(swapRouter))
         ));
+        
+        // Display configuration summary
+        displayDeploymentSummary(swapRouter);
     }
 
     /// @notice Deploy SwapRouter with default configuration
@@ -309,5 +313,56 @@ contract DeploySwapRouter is Script {
             "PoolSwapTest: ", vm.toString(getPoolSwapTestAddress()), "\n",
             "Block Explorer: ", ChainAddresses.getBlockExplorer(block.chainid)
         );
+    }
+
+    /// @notice Display deployment summary and usage examples
+    /// @param swapRouter The deployed SwapRouter instance
+    function displayDeploymentSummary(SwapRouter swapRouter) internal view {
+        console.log("=== Deployment Summary ===");
+        console.log("SwapRouter Address:", address(swapRouter));
+        console.log("PoolSwapTest Address:", address(swapRouter.poolSwapTest()));
+        
+        PoolKey memory poolConfig = swapRouter.getPoolConfiguration();
+        console.log("Pool Configuration:");
+        console.log("  Currency0 (ETH):", Currency.unwrap(poolConfig.currency0));
+        console.log("  Currency1 (USDC):", Currency.unwrap(poolConfig.currency1));
+        console.log("  Fee (0.3%):", poolConfig.fee);
+        console.log("  Tick Spacing:", poolConfig.tickSpacing);
+        console.log("  Hooks:", address(poolConfig.hooks));
+        
+        IPoolSwapTest.TestSettings memory settings = swapRouter.getTestSettings();
+        console.log("Test Settings:");
+        console.log("  Take Claims:", settings.takeClaims);
+        console.log("  Settle Using Burn:", settings.settleUsingBurn);
+        
+        console.log("=== Usage Examples ===");
+        console.log("Sell ETH for USDC (exact input):");
+        console.log("  swapRouter.swap(-1000000000000000000, true, '')  // -1 ETH, zeroForOne=true");
+        console.log("Buy ETH with USDC (exact output):");
+        console.log("  swapRouter.swap(1000000000000000000, false, '')   // +1 ETH, zeroForOne=false");
+        console.log("=== Summary Complete ===");
+    }
+
+    /// @notice Test the new SwapRouter functionality (dry run)
+    /// @param swapRouter The deployed SwapRouter instance
+    function testSwapRouterFunctionality(SwapRouter swapRouter) external view {
+        console.log("=== Testing SwapRouter Functionality ===");
+        
+        // Test that all getter functions work
+        address poolSwapTestAddr = address(swapRouter.poolSwapTest());
+        require(poolSwapTestAddr != address(0), "PoolSwapTest not set");
+        console.log("[OK] PoolSwapTest getter works");
+        
+        PoolKey memory poolConfig = swapRouter.getPoolConfiguration();
+        require(poolConfig.fee > 0, "Invalid pool fee");
+        require(poolConfig.tickSpacing != 0, "Invalid tick spacing");
+        console.log("[OK] Pool configuration getter works");
+        
+        IPoolSwapTest.TestSettings memory settings = swapRouter.getTestSettings();
+        console.log("[OK] Test settings getter works");
+        console.log("  Take Claims:", settings.takeClaims);
+        console.log("  Settle Using Burn:", settings.settleUsingBurn);
+        
+        console.log("=== All Tests Passed ===");
     }
 } 

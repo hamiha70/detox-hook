@@ -28,12 +28,28 @@ deploy-swap-router-arbitrum-sepolia:
 		echo "   Please set your deployment private key with: export DEPLOYMENT_KEY=0x..."; \
 		exit 1; \
 	fi
+	@echo "📋 Validating deployment configuration first..."
+	@make test-swap-router-deployment
 	@echo "📝 Using DEPLOYMENT_KEY for deployment"
 	forge script script/DeploySwapRouter.s.sol:DeploySwapRouter \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		--broadcast \
 		--verify \
 		--etherscan-api-key $(ARBISCAN_API_KEY) \
+		-vvvv
+
+# Deploy SwapRouter without verification (faster for testing)
+deploy-swap-router-arbitrum-sepolia-no-verify:
+	@echo "🚀 Deploying SwapRouter to Arbitrum Sepolia (no verification)..."
+	@if [ -z "$(DEPLOYMENT_KEY)" ]; then \
+		echo "❌ Error: DEPLOYMENT_KEY environment variable is not set"; \
+		echo "   Please set your deployment private key with: export DEPLOYMENT_KEY=0x..."; \
+		exit 1; \
+	fi
+	@echo "📝 Using DEPLOYMENT_KEY for deployment"
+	forge script script/DeploySwapRouter.s.sol:DeploySwapRouter \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
 		-vvvv
 
 # Test SwapRouter deployment configuration (no broadcast)
@@ -44,6 +60,35 @@ test-swap-router-deployment:
 		--sig "testDeployment()" \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		-vvvv
+
+# Test SwapRouter contracts locally
+test-swap-router:
+	@echo "🧪 Running SwapRouter unit tests..."
+	forge test --match-contract SwapRouterTest -vvv
+
+# Test deployed SwapRouter functionality
+test-deployed-swap-router:
+	@echo "🧪 Testing deployed SwapRouter functionality..."
+	@if [ -z "$(SWAP_ROUTER_ADDRESS)" ]; then \
+		echo "❌ Error: SWAP_ROUTER_ADDRESS environment variable is not set"; \
+		echo "   Usage: SWAP_ROUTER_ADDRESS=0x123...abc make test-deployed-swap-router"; \
+		exit 1; \
+	fi
+	forge script script/DeploySwapRouter.s.sol:DeploySwapRouter \
+		--sig "testSwapRouterFunctionality(address)" $(SWAP_ROUTER_ADDRESS) \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		-vvvv
+
+# Complete deployment workflow
+deploy-swap-router-complete:
+	@echo "🚀 Complete SwapRouter deployment workflow..."
+	@echo "1️⃣ Running tests..."
+	@make test-swap-router
+	@echo "2️⃣ Validating deployment configuration..."
+	@make test-swap-router-deployment
+	@echo "3️⃣ Deploying to Arbitrum Sepolia..."
+	@make deploy-swap-router-arbitrum-sepolia-no-verify
+	@echo "✅ Deployment complete! Remember to update frontend with CONTRACT_ADDRESS"
 
 # Update SwapRouter address in frontend after deployment
 update-frontend-address:

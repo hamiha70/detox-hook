@@ -77,13 +77,15 @@ contract SwapRouter {
     /// @param amountToSwap The amount to swap (negative for exact input, positive for exact output)
     /// @param updateData Additional data for price updates or hook data
     /// @return delta The balance delta from the swap
-    function swap(
-        int256 amountToSwap, 
-        bool zeroForOne, 
-        bytes calldata updateData
-    )external payable returns (BalanceDelta delta) {
+    function swap(int256 amountToSwap, bytes calldata updateData) 
+        external 
+        payable 
+        returns (BalanceDelta delta) 
+    {
         if (amountToSwap == 0) revert InvalidSwapAmount();
         
+        // Determine swap direction based on amount sign and pool configuration
+        bool zeroForOne = amountToSwap < 0; // Negative means exact input (selling token0 for token1)
         
         // Create swap parameters
         SwapParams memory swapParams = SwapParams({
@@ -105,7 +107,71 @@ contract SwapRouter {
         return delta;
     }
     
+    /// @notice Execute a swap with custom swap direction
+    /// @param amountToSwap The amount to swap
+    /// @param zeroForOne Direction of the swap (true = token0 for token1, false = token1 for token0)
+    /// @param updateData Additional data for price updates or hook data
+    /// @return delta The balance delta from the swap
+    function swapWithDirection(
+        int256 amountToSwap, 
+        bool zeroForOne, 
+        bytes calldata updateData
+    ) external payable returns (BalanceDelta delta) {
+        if (amountToSwap == 0) revert InvalidSwapAmount();
+        
+        // Create swap parameters with custom direction
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: zeroForOne,
+            amountSpecified: amountToSwap,
+            sqrtPriceLimitX96: zeroForOne ? 4295128739 : 1461446703485210103287273052203988822378723970342
+        });
+        
+        // Execute the swap through PoolSwapTest
+        delta = poolSwapTest.swap{value: msg.value}(
+            poolKey,
+            swapParams,
+            defaultTestSettings,
+            updateData
+        );
+        
+        emit SwapExecuted(msg.sender, amountToSwap, zeroForOne, delta);
+        
+        return delta;
+    }
     
+    /// @notice Execute a swap with custom price limits
+    /// @param amountToSwap The amount to swap
+    /// @param zeroForOne Direction of the swap
+    /// @param sqrtPriceLimitX96 The price limit for the swap
+    /// @param updateData Additional data for price updates or hook data
+    /// @return delta The balance delta from the swap
+    function swapWithPriceLimit(
+        int256 amountToSwap,
+        bool zeroForOne,
+        uint160 sqrtPriceLimitX96,
+        bytes calldata updateData
+    ) external payable returns (BalanceDelta delta) {
+        if (amountToSwap == 0) revert InvalidSwapAmount();
+        
+        // Create swap parameters with custom price limit
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: zeroForOne,
+            amountSpecified: amountToSwap,
+            sqrtPriceLimitX96: sqrtPriceLimitX96
+        });
+        
+        // Execute the swap through PoolSwapTest
+        delta = poolSwapTest.swap{value: msg.value}(
+            poolKey,
+            swapParams,
+            defaultTestSettings,
+            updateData
+        );
+        
+        emit SwapExecuted(msg.sender, amountToSwap, zeroForOne, delta);
+        
+        return delta;
+    }
     
     /// @notice Update the pool configuration
     /// @param newPoolKey The new pool configuration
