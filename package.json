@@ -57,6 +57,7 @@
     "test:detox": "yarn workspace @se-2/foundry test --match-contract DetoxHook",
     "test:fork": "yarn workspace @se-2/foundry test --match-contract DetoxHookArbitrumSepoliaFork",
     "test:hookminer": "yarn workspace @se-2/foundry test --match-contract HookMinerTest",
+    "update:external": "yarn workspace @se-2/foundry update:external",
     "vercel": "yarn workspace @se-2/nextjs vercel",
     "vercel:login": "yarn workspace @se-2/nextjs vercel:login",
     "vercel:yolo": "yarn workspace @se-2/nextjs vercel:yolo",

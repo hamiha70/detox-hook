@@ -9,6 +9,7 @@ yarn test:detox         # Test DetoxHook
 yarn test:fork          # Test on Arbitrum Sepolia fork
 yarn deploy:arbitrum    # Deploy to testnet
 yarn generate:contracts # Update frontend ABIs
+yarn update:external    # Update local DetoxHook address in frontend
 
 # Full cycle after changes
 yarn compile && yarn test:detox && yarn test:fork
@@ -42,12 +43,24 @@ cp env.example .env
 ```bash
 # ✅ Fix: Generate contracts
 yarn generate:contracts
+
+# ✅ Alternative: Multiple localhost instances issue
+# DetoxHook is configured as external contract for local development
+# Check packages/nextjs/contracts/externalContracts.ts
+# Address: 0x41ce076C1Baf449cF043788Ac102aEE614500088 (Anvil chain 31337)
 ```
 
 ### ❌ Fork tests failing
 ```bash
 # ✅ Expected: RPC issues are normal
 # Focus on local tests: yarn test:detox
+```
+
+### ❌ Multiple localhost instances (3000, 3001, 3002, 3003)
+```bash
+# ✅ This is normal - DetoxHook uses externalContracts.ts
+# Frontend will show DetoxHook on localhost regardless of port
+# Contract address: 0x41ce076C1Baf449cF043788Ac102aEE614500088
 ```
 
 ## 📁 Directory Context
@@ -69,9 +82,15 @@ detox-hook/                 ← ROOT (run most commands here)
 
 ## 🌐 Deployed Contract
 
+### Testnet (Arbitrum Sepolia)
 - **Network**: Arbitrum Sepolia (421614)
 - **Address**: `0xadc387b56f58d9f5b486bb7575bf3b5ea5898088`
 - **Explorer**: [Blockscout](https://arbitrum-sepolia.blockscout.com/address/0xadc387b56f58d9f5b486bb7575bf3b5ea5898088)
+
+### Local Development (Anvil)
+- **Network**: Anvil (31337)
+- **Address**: `0x41ce076C1Baf449cF043788Ac102aEE614500088`
+- **Configuration**: `packages/nextjs/contracts/externalContracts.ts`
 
 ## 📖 Full Documentation
 
