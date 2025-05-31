@@ -495,7 +495,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         console.log("=== Real Pyth Oracle Test Complete ===");
     }
     
-    function test_ArbitrumSepoliaInfrastructure() public {
+    function test_ArbitrumSepoliaInfrastructure() public view {
         console.log("=== Testing Arbitrum Sepolia V4 Infrastructure ===");
         
         // Verify all expected contracts exist and have code
