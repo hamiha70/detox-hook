@@ -14,11 +14,12 @@ export const DEFAULT_ALCHEMY_API_KEY = "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF";
 
 const scaffoldConfig = {
   // The networks on which your DApp is live
-  targetNetworks: [chains.foundry, chains.arbitrumSepolia],
+  // Prioritizing Arbitrum Sepolia where SwapRouter is deployed
+  targetNetworks: [chains.arbitrumSepolia],
 
   // The interval at which your front-end polls the RPC servers for new data
-  // it has no effect if you only target the local network (default is 4000)
-  pollingInterval: 30000,
+  // Shorter polling for better UX on testnet
+  pollingInterval: 15000,
 
   // This is ours Alchemy's default API key.
   // You can get your own at https://dashboard.alchemyapi.io
@@ -26,11 +27,9 @@ const scaffoldConfig = {
   // .env.local for local testing, and in the Vercel/system env config for live apps.
   alchemyApiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || DEFAULT_ALCHEMY_API_KEY,
 
-  // If you want to use a different RPC for a specific network, you can add it here.
-  // The key is the chain ID, and the value is the HTTP RPC URL
+  // Optimized RPC for Arbitrum Sepolia
   rpcOverrides: {
-    // Example:
-    // [chains.mainnet.id]: "https://mainnet.buidlguidl.com",
+    [chains.arbitrumSepolia.id]: "https://sepolia-rollup.arbitrum.io/rpc",
   },
 
   // This is ours WalletConnect's default project ID.
@@ -39,14 +38,14 @@ const scaffoldConfig = {
   // .env.local for local testing, and in the Vercel/system env config for live apps.
   walletConnectProjectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || "3a8170812b534d0ff9d794f19a901d64",
 
-  // Only show the Burner Wallet when running on hardhat network
-  onlyLocalBurnerWallet: true,
+  // Allow burner wallet for testing on Arbitrum Sepolia
+  onlyLocalBurnerWallet: false,
 
   // Custom block explorers for specific networks
   // Override the default block explorer for any network
   blockExplorers: {
     [chains.arbitrumSepolia.id]: {
-      name: "Blockscout",
+      name: "Arbitrum Sepolia Blockscout",
       url: "https://arbitrum-sepolia.blockscout.com",
     },
   } as { [chainId: number]: { name: string; url: string } },

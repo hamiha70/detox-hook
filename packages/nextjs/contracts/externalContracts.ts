@@ -12,6 +12,109 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
  * } as const;
  */
 const externalContracts = {
+  // Arbitrum Sepolia External Contracts
+  421614: {
+    // Example: Add any Uniswap V4 or other external contracts here
+    PoolManager: {
+      address: "0xf242cE588b030d0895C51C0730F2368aCf1bC04e", // Uniswap V4 PoolManager on Arbitrum Sepolia
+      abi: [
+        // Add PoolManager ABI here if you want to interact with it
+        {
+          type: "function",
+          name: "getSlot0",
+          inputs: [
+            {
+              name: "poolId",
+              type: "bytes32",
+              internalType: "PoolId",
+            },
+          ],
+          outputs: [
+            {
+              name: "sqrtPriceX96",
+              type: "uint160",
+              internalType: "uint160",
+            },
+            {
+              name: "tick",
+              type: "int24",
+              internalType: "int24",
+            },
+          ],
+          stateMutability: "view",
+        },
+      ],
+    },
+    PoolSwapTest: {
+      address: "0xf3A39C86dbd13C45365E57FB90fe413371F65AF8", // The PoolSwapTest contract your SwapRouter uses
+      abi: [
+        {
+          type: "function",
+          name: "swap",
+          inputs: [
+            {
+              name: "key",
+              type: "tuple",
+              internalType: "struct PoolKey",
+              components: [
+                {
+                  name: "currency0",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "currency1",
+                  type: "address",
+                  internalType: "Currency",
+                },
+                {
+                  name: "fee",
+                  type: "uint24",
+                  internalType: "uint24",
+                },
+                {
+                  name: "tickSpacing",
+                  type: "int24",
+                  internalType: "int24",
+                },
+                {
+                  name: "hooks",
+                  type: "address",
+                  internalType: "contract IHooks",
+                },
+              ],
+            },
+            {
+              name: "params",
+              type: "tuple",
+              internalType: "struct IPoolSwapTest.TestSettings",
+              components: [
+                {
+                  name: "takeClaims",
+                  type: "bool",
+                  internalType: "bool",
+                },
+                {
+                  name: "settleUsingBurn",
+                  type: "bool",
+                  internalType: "bool",
+                },
+              ],
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "int256",
+              internalType: "BalanceDelta",
+            },
+          ],
+          stateMutability: "payable",
+        },
+      ],
+    },
+  },
+  // Localhost contracts
   31337: {
     DetoxHook: {
       address: "0x41ce076C1Baf449cF043788Ac102aEE614500088",
