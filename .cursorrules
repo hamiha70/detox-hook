@@ -1,0 +1,148 @@
+# DetoxHook - Uniswap V4 MEV Protection Hook
+
+## 📋 **Project Rules Structure**
+
+This project uses modular Cursor rules. Key rule files:
+- **Pyth Network Integration**: `.cursor/rules/pyth-network.md` - Essential Pyth oracle guidelines
+- **Main Project Rules**: This file - General DetoxHook development guidelines
+
+## 🎯 **PROJECT OVERVIEW**
+
+DetoxHook is a revolutionary Uniswap V4 Hook that transforms toxic arbitrage extraction into sustainable LP earnings using Pyth Network's real-time price oracles.
+
+**Core Components:**
+- **Smart Contracts**: `packages/foundry/src/` - Main DetoxHook implementation
+- **Deployment Scripts**: `packages/foundry/script/` - Complete deployment tooling
+- **Tests**: `packages/foundry/test/` - Comprehensive test suite (37/37 passing)
+- **Frontend Tools**: `packages/foundry/scripts-js/` - SwapRouter testing interface
+
+## 🛡️ **CRITICAL SAFETY RULES**
+
+### **🚨 NEVER DEPLOY TO REAL NETWORKS**
+- **NEVER execute deployment commands to real networks** (testnets or mainnets)
+- **NEVER run** `make deploy-arbitrum`, `forge script --broadcast`, or any real network deployment
+- **USER ALWAYS handles real network deployments** themselves
+- This prevents accidental deployments, gas costs, or network spam
+
+### **🚨 NEVER TOUCH .env FILES**
+- **NEVER create, edit, delete, or overwrite** `.env` files
+- **NEVER suggest commands** that modify `.env` files
+- **NEVER read contents** of `.env` files (contain sensitive data)
+- **USER ALWAYS handles** `.env` file management themselves
+
+## 🔧 **DEVELOPMENT GUIDELINES**
+
+### **Core Architecture Focus**
+- **Main implementation**: `packages/foundry/` contains all core functionality
+- **Foundry-first**: Smart contracts, tests, and deployment scripts are primary
+- **Minimal frontend**: Basic testing interface, not a full dApp
+
+### **Code Quality Standards**
+- **Conservative changes**: Make minimal necessary fixes, don't refactor unnecessarily
+- **Preserve existing logic**: Keep project architecture and style intact
+- **NatSpec documentation**: All public/external functions must have proper documentation
+- **Comprehensive testing**: All new features require corresponding tests
+
+### **Pyth Network Integration**
+- **ALWAYS reference**: `.cursor/rules/pyth-network.md` for Pyth-specific guidelines
+- **Pull oracle model**: Essential for DetoxHook's MEV protection functionality
+- **Real-time validation**: Price freshness and confidence intervals are critical
+
+## 🚀 **DEPLOYMENT WORKFLOW**
+
+### **Local Development**
+```bash
+yarn chain          # Start local Anvil blockchain
+yarn deploy         # Deploy contracts locally
+forge test          # Run comprehensive test suite
+```
+
+### **Testing with Pyth Integration**
+```bash
+yarn swap-router --getpool                    # Get pool configuration
+yarn swap-router --swap 0.00002 false        # Test small swap
+make swap-router ARGS="--getpool"            # Alternative make command
+```
+
+### **Production Deployment (USER ONLY)**
+- Complete deployment scripts available in `packages/foundry/script/`
+- Modular approach: hook deployment, funding, pool initialization
+- Comprehensive validation and error handling
+
+## 📊 **KEY FEATURES**
+
+### **MEV Protection Mechanism**
+- **Fee extraction** from exact input swaps using `poolManager.take()`
+- **BeforeSwapDelta** to maintain accounting balance
+- **Dynamic fee adjustment** based on arbitrage opportunity size
+- **LP value redistribution** through `PoolManager.donate()`
+
+### **Technical Innovation**
+- **First production MEV protection hook** for Uniswap V4
+- **Pyth's pull oracle model** for sub-second price feeds
+- **Confidence interval validation** preventing false arbitrage detection
+- **Gas-optimized implementation** with comprehensive error handling
+
+## 🧪 **TESTING REQUIREMENTS**
+
+### **Test Coverage**
+- **Unit tests**: All core functionality covered
+- **Integration tests**: Full swap flow with MEV detection
+- **Fork tests**: Real network data validation
+- **Oracle tests**: Pyth integration with various scenarios
+
+### **Testing Commands**
+```bash
+forge test                                    # Run all tests
+forge test -vvv                              # Verbose output
+forge test --match-test testBeforeSwap       # Specific test
+forge test --fork-url $RPC_URL               # Fork testing
+```
+
+## 📚 **DOCUMENTATION STANDARDS**
+
+### **Code Documentation**
+- **NatSpec comments** for all public/external functions
+- **Inline comments** for complex logic and security considerations
+- **README files** for each major component
+- **Deployment guides** with step-by-step instructions
+
+### **Architecture Documentation**
+- **Contract interactions** clearly documented
+- **MEV protection flow** explained with examples
+- **Pyth integration patterns** with code samples
+- **Gas optimization strategies** documented
+
+## 🔍 **DEBUGGING GUIDELINES**
+
+### **Common Issues**
+- **Oracle connectivity**: Pyth Hermes API network issues
+- **Gas estimation**: Complex hook interactions require careful gas management
+- **Pool initialization**: Proper PoolKey configuration essential
+- **Address validation**: Hook addresses must match permission requirements
+
+### **Debugging Tools**
+- **SwapRouter frontend**: Real-time testing with Pyth integration
+- **Forge traces**: Detailed transaction execution analysis
+- **Blockscout verification**: Contract verification and interaction
+- **Event monitoring**: Comprehensive logging for all major operations
+
+## 🎯 **SUCCESS METRICS**
+
+- **Test coverage**: 100% for core functionality
+- **Gas efficiency**: < 50k gas per oracle call
+- **Oracle latency**: < 500ms for price updates
+- **LP revenue increase**: 15-25% from captured MEV
+- **System uptime**: > 99.9% availability
+
+## ⚠️ **CRITICAL REMINDERS**
+
+1. **ALWAYS reference Pyth documentation** in `.cursor/rules/pyth-network.md`
+2. **NEVER deploy to real networks** without explicit user approval
+3. **ALWAYS validate oracle data** before using in MEV detection
+4. **NEVER modify .env files** or handle private keys
+5. **ALWAYS test with real Pyth data** before deployment
+
+---
+
+**🛡️ DetoxHook represents the future of fair DeFi - where MEV benefits everyone, not just the bots.** 
