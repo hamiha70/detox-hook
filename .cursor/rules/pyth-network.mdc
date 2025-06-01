@@ -1,3 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
 # Pyth Network Integration Rules for DetoxHook
 
 ## 🐍 **CRITICAL PYTH NETWORK DOCUMENTATION**
