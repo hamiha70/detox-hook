@@ -28,7 +28,7 @@ contract DeployDetoxHook is Script {
 
     /// @notice Main deployment function
     function run() external virtual {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
         vm.startBroadcast(deployerPrivateKey);
         
         address poolManager = getPoolManagerAddress();
@@ -114,21 +114,44 @@ contract DeployDetoxHook is Script {
         console.log("Required flags:", HOOK_FLAGS);
         console.log("Mining for address with correct flag bits...");
 
+        // Add randomness to break deterministic pattern
+        uint256 nonce = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender, block.number))) % 10000;
+        console.log("Using random nonce for uniqueness:", nonce);
+
         // Prepare creation code with constructor arguments
         bytes memory creationCode = type(DetoxHook).creationCode;
         bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), msg.sender, address(0));
+        bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
 
-        // Mine the salt using HookMiner
-        address expectedAddress;
-        (expectedAddress, salt) = HookMiner.find(CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs);
-
-        console.log("Salt found:", vm.toString(salt));
-        console.log("Expected hook address:", expectedAddress);
-        console.log("Address flags match:", uint160(expectedAddress) & HookMiner.FLAG_MASK == HOOK_FLAGS);
-
-        emit SaltMined(salt, expectedAddress, HOOK_FLAGS);
-
-        return salt;
+        // Manual mining with randomness
+        uint256 attempts = 0;
+        uint256 maxAttempts = 100000;
+        
+        while (attempts < maxAttempts) {
+            // Create a unique salt using nonce and attempt number
+            bytes32 candidateSalt = keccak256(abi.encodePacked("DetoxHook", nonce, attempts, block.timestamp));
+            
+            // Compute the address that would be deployed
+            address candidateAddress = HookMiner.computeAddress(CREATE2_DEPLOYER, uint256(candidateSalt), deploymentData);
+            
+            // Check if this address has the correct flags
+            uint160 addressFlags = uint160(candidateAddress) & HookMiner.FLAG_MASK;
+            
+            if (addressFlags == HOOK_FLAGS) {
+                salt = candidateSalt;
+                console.log("Salt found after", attempts + 1, "attempts");
+                console.log("Salt found:", vm.toString(salt));
+                console.log("Expected hook address:", candidateAddress);
+                console.log("Address flags match:", true);
+                
+                emit SaltMined(salt, candidateAddress, HOOK_FLAGS);
+                return salt;
+            }
+            
+            attempts++;
+        }
+        
+        revert("Failed to find valid salt after maximum attempts");
     }
 
     /// @notice Deploy DetoxHook using CREATE2 with the given salt

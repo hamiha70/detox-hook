@@ -131,3 +131,34 @@ test:
 verify:
 	forge script script/VerifyAll.s.sol --ffi --rpc-url $(RPC_URL)
 
+# Deploy DetoxHook (simple version) to Arbitrum Sepolia
+deploy-detox-hook-arbitrum-sepolia:
+	@echo "🚀 Simple DetoxHook Deployment to Arbitrum Sepolia..."
+	forge script script/DeployDetoxHook.s.sol:DeployDetoxHook \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		--verify \
+		--verifier blockscout \
+		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
+		-vvvv
+
+# Initialize pools after hook deployment
+initialize-pools-arbitrum-sepolia:
+	@echo "🏊 Initializing ETH/USDC pools on Arbitrum Sepolia..."
+	@echo "Make sure to set HOOK_ADDRESS environment variable first!"
+	forge script script/InitializePools.s.sol:InitializePools \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		-vvvv
+
+# Deploy PoolRegistry to store DetoxHook pool configurations
+deploy-pool-registry-arbitrum-sepolia:
+	@echo "📋 Deploying PoolRegistry to Arbitrum Sepolia..."
+	forge script script/DeployPoolRegistry.s.sol:DeployPoolRegistry \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		--verify \
+		--verifier blockscout \
+		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
+		-vvvv
+

@@ -1,0 +1,70 @@
+{
+  "chainId": 421614,
+  "chainName": "Arbitrum Sepolia",
+  "deploymentTimestamp": "2025-01-27",
+  "detoxHook": {
+    "address": "0x444F320aA27e73e1E293c14B22EfBDCbce0e0088",
+    "deployer": "0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38",
+    "verified": false,
+    "blockExplorer": "https://arbitrum-sepolia.blockscout.com/address/0x444F320aA27e73e1E293c14B22EfBDCbce0e0088"
+  },
+  "pools": {
+    "pool1": {
+      "poolId": "0x5e6967b5ca922ff1aa7f25521cfd03d9a59c17536caa09ba77ed0586c238d23f",
+      "description": "ETH/USDC 0.3% fee pool (~2500 USDC/ETH)",
+      "poolKey": {
+        "currency0": "0x0000000000000000000000000000000000000000",
+        "currency1": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+        "fee": 3000,
+        "tickSpacing": 60,
+        "hooks": "0x444F320aA27e73e1E293c14B22EfBDCbce0e0088"
+      },
+      "initialPrice": {
+        "sqrtPriceX96": "125270724187523965593206617637",
+        "tick": 9163,
+        "priceUSDC": 2500
+      },
+      "liquidity": {
+        "usdcAmount": "1000000",
+        "ethAmount": "400000000000000",
+        "liquidityDelta": "1000000"
+      },
+      "status": "initialized",
+      "transactionHash": "0xe91ae7b4f7ea164acefb52729f73e107d3c48a93b5f49f4be152fddca5fafa8f"
+    },
+    "pool2": {
+      "poolId": "0x10fe1bb5300768c6f5986ee70c9ee834ea64ea704f92b0fd2cda0bcbe829ec90",
+      "description": "ETH/USDC 0.05% fee pool (~2600 USDC/ETH)",
+      "poolKey": {
+        "currency0": "0x0000000000000000000000000000000000000000",
+        "currency1": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+        "fee": 500,
+        "tickSpacing": 10,
+        "hooks": "0x444F320aA27e73e1E293c14B22EfBDCbce0e0088"
+      },
+      "initialPrice": {
+        "sqrtPriceX96": "127775718394449857270889842187",
+        "tick": 9559,
+        "priceUSDC": 2600
+      },
+      "liquidity": {
+        "usdcAmount": "1000000",
+        "ethAmount": "384615384615384",
+        "liquidityDelta": "1000000"
+      },
+      "status": "initialized",
+      "transactionHash": "0xac87f1cdcacada907e8d0d18d03c3323061bb5ec576924626ea3885ed1657b20"
+    }
+  },
+  "contracts": {
+    "poolManager": "0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317",
+    "usdc": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+    "modifyLiquidityRouter": "0x9A8ca723F5dcCb7926D00B71deC55c2fEa1F50f7",
+    "pythOracle": "0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF"
+  },
+  "deployment": {
+    "totalGasCost": "0.0000577876 ETH",
+    "transactions": 4,
+    "lastUpdated": "2025-01-27T00:00:00Z"
+  }
+} 
