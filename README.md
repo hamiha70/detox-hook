@@ -98,37 +98,77 @@ function beforeSwap(...) external override returns (...) {
 
 ### **Prerequisites**
 
-- [Foundry](https://getfoundry.sh/) - Smart contract development framework
-- [Node.js](https://nodejs.org/) (>= v20.18.3) - For package management
-- [Yarn](https://yarnpkg.com/) - Package manager
-- [Git](https://git-scm.com/) - Version control
+- Node.js 18+ and Yarn
+- Git
 
 ### **Installation**
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-repo/detox-hook
+git clone <repository-url>
 cd detox-hook
-
-# Install dependencies
 yarn install
-
-# Install Foundry dependencies
-cd packages/foundry
-forge install
 ```
 
-### **Environment Setup**
+### **Development Workflow**
 
-Create `.env` file in `packages/foundry/`:
+1. **Start Local Development**
+   ```bash
+   yarn chain          # Start local Anvil blockchain
+   yarn deploy         # Deploy contracts locally  
+   yarn start          # Start frontend (optional)
+   ```
 
+2. **Test DetoxHook Integration**
+   ```bash
+   # Test swaps with Pyth price feeds
+   yarn swap-router --getpool                    # Get current pool configuration
+   yarn swap-router --swap 0.00002 false        # Execute small test swap
+   yarn swap-router --wallet 0x...              # Set funding wallet
+   
+   # Or using make commands
+   make swap-router ARGS="--getpool"
+   make swap-router ARGS="--swap 0.00002 false"
+   ```
+
+3. **Run Tests**
+   ```bash
+   cd packages/foundry
+   forge test           # Run all Foundry tests
+   forge test -vvv      # Verbose test output
+   ```
+
+### **SwapRouter Frontend - Pyth Integration**
+
+The project includes a comprehensive command-line interface for testing DetoxHook with real Pyth price feeds:
+
+**Features:**
+- 🐍 **Real-time Pyth price feeds** via Hermes API
+- 🔄 **Live swap execution** on Arbitrum Sepolia
+- 📊 **Pool configuration management**
+- 💰 **Wallet balance checking**
+- 📈 **Transaction monitoring** with Arbiscan links
+
+**Usage Examples:**
 ```bash
-# Required for deployment
-DEPLOYMENT_KEY=your_private_key_here
-ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
+# Get current pool configuration
+yarn swap-router --getpool
 
-# Optional: For verification
-ARBISCAN_API_KEY=your_arbiscan_api_key
+# Execute a swap (0.00002 ETH, direction: false = ETH→USDC)
+yarn swap-router --swap 0.00002 false
+
+# Update pool configuration
+yarn swap-router --updatepool 0x... 0x... 3000 60 0x... pool123
+
+# Set funding wallet for transactions
+yarn swap-router --wallet 0x742d35Cc6644C44532767eaFA8CA3b8d8ad67A95
+```
+
+**Environment Setup:**
+```bash
+# Required environment variables
+DEPLOYMENT_WALLET=0x...     # Your wallet address
+DEPLOYMENT_KEY=0x...        # Your private key
+ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc  # Optional
 ```
 
 ## 🧪 **Testing**

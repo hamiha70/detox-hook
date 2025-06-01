@@ -17,11 +17,14 @@
     "generate": "node scripts-js/generateTsAbis.js",
     "postinstall": "shx cp -n .env.example .env",
     "lint": "make lint",
+    "swap-router": "node scripts-js/SwapRouterFrontend.cjs",
     "test": "forge test",
     "update:external": "node scripts-js/updateExternalContracts.js",
     "verify": "make verify RPC_URL=${1:-localhost}"
   },
   "dependencies": {
+    "axios": "~1.6.0",
+    "chalk": "~4.1.2",
     "dotenv": "~16.3.1",
     "envfile": "~6.18.0",
     "ethers": "~5.7.1",

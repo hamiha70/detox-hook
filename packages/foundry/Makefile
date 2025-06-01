@@ -190,3 +190,15 @@ fund-detox-hook-arbitrum-sepolia:
 		--broadcast \
 		-vvvv
 
+# SwapRouter Frontend - Pyth-Integrated DEX Interface
+swap-router:
+	@echo "🔄 Starting SwapRouter Frontend with Pyth Integration..."
+	@echo "Usage: make swap-router ARGS='--swap 0.00002 false'"
+	@echo "       make swap-router ARGS='--getpool'"
+	@echo "       make swap-router ARGS='--wallet 0x...'"
+	@if [ -z "$(ARGS)" ]; then \
+		node scripts-js/SwapRouterFrontend.cjs; \
+	else \
+		node scripts-js/SwapRouterFrontend.cjs $(ARGS); \
+	fi
+
