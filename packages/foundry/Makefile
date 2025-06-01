@@ -162,3 +162,31 @@ deploy-pool-registry-arbitrum-sepolia:
 		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
 		-vvvv
 
+# Initialize pools with existing DetoxHook (based on DeployDetoxHookComplete.s.sol)
+initialize-pools-with-hook-arbitrum-sepolia:
+	@echo "🏊 Initializing ETH/USDC pools with existing DetoxHook on Arbitrum Sepolia..."
+	@echo "Make sure to set HOOK_ADDRESS environment variable first!"
+	@if [ -z "$(HOOK_ADDRESS)" ]; then \
+		echo "❌ Error: HOOK_ADDRESS environment variable is not set"; \
+		echo "   Please set your hook address with: export HOOK_ADDRESS=0x..."; \
+		exit 1; \
+	fi
+	forge script script/InitializePoolsWithHook.s.sol:InitializePoolsWithHook \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		-vvvv
+
+# Fund DetoxHook with ETH
+fund-detox-hook-arbitrum-sepolia:
+	@echo "💰 Funding DetoxHook with ETH on Arbitrum Sepolia..."
+	@echo "Make sure to set HOOK_ADDRESS environment variable first!"
+	@if [ -z "$(HOOK_ADDRESS)" ]; then \
+		echo "❌ Error: HOOK_ADDRESS environment variable is not set"; \
+		echo "   Please set your hook address with: export HOOK_ADDRESS=0x..."; \
+		exit 1; \
+	fi
+	forge script script/FundDetoxHook.s.sol:FundDetoxHook \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		-vvvv
+
