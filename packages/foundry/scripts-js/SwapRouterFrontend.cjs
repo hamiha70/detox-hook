@@ -767,12 +767,12 @@ class SwapRouterFrontend {
      * Call the Hermes system and generate the update data required for reading data on-chain
      * Make a call to the function swap() of the smart contract SwapRouter.sol
      */
-    async executeSwap(amount, direction) {
+    async executeSwap(amount, direction, exactInput = true) {
         this.printColored(`\n🔄 [--swap] Executing swap with amount: ${amount}, direction: ${direction}`, 'magenta');
         
         if (!this.contract || !this.wallet) {
             this.printColored("❌ Contract or wallet not available", 'red');
-            return;
+            return { success: false, error: "Contract or wallet not available" };
         }
 
         // Use funding wallet if specified, otherwise use default wallet
@@ -780,181 +780,114 @@ class SwapRouterFrontend {
             new ethers.Wallet(this.wallet.privateKey, this.provider) : this.wallet;
         
         try {
-            // Print swapper address and current balances
-            this.printColored(`\n👤 Swapper Address: ${activeWallet.address}`, 'cyan');
-            
-            // Get current balances
-            const ethBalance = await this.provider.getBalance(activeWallet.address);
-            const ethBalanceFormatted = parseFloat(ethers.utils.formatEther(ethBalance));
-            this.printColored(`💰 ETH Balance: ${ethBalanceFormatted.toFixed(6)} ETH`, 'cyan');
-            
-            // 1. Check token balances and determine swap type
-            this.printColored("\n🔍 Checking token status and swap requirements...", 'cyan');
-            const usdcStatus = await this.checkUSDCStatus();
-            
-            // Determine swap direction and input token
-            const isETHInput = direction; // zeroForOne = true means ETH (currency0) -> USDC (currency1)
-            const inputToken = isETHInput ? 'ETH' : 'USDC';
-            const outputToken = isETHInput ? 'USDC' : 'ETH';
-            const inputBalance = isETHInput ? ethBalanceFormatted : usdcStatus.balance;
-            
-            this.printColored(`\n📊 Swap Analysis:`, 'cyan');
-            this.printColored(`   Direction: ${inputToken} → ${outputToken}`, 'white');
-            this.printColored(`   Input Amount: ${amount} ${inputToken}`, 'white');
-            this.printColored(`   Available Balance: ${inputBalance.toFixed(6)} ${inputToken}`, 'white');
-            
-            // Check if amount is too big
-            if (amount > inputBalance) {
-                this.printColored(`❌ Insufficient ${inputToken} balance!`, 'red');
-                this.printColored(`   Requested: ${amount} ${inputToken}`, 'red');
-                this.printColored(`   Available: ${inputBalance.toFixed(6)} ${inputToken}`, 'red');
-                this.printColored(`💡 Try a smaller amount or get more ${inputToken} tokens`, 'yellow');
-                return;
-            }
-            
-            // For ETH input, check if we have enough for gas + swap amount
-            if (isETHInput) {
-                const estimatedGasCost = 0.01; // Rough estimate for gas costs
-                const totalNeeded = amount + estimatedGasCost;
-                if (totalNeeded > ethBalanceFormatted) {
-                    this.printColored(`⚠️  Warning: Low ETH balance for gas + swap`, 'yellow');
-                    this.printColored(`   Swap Amount: ${amount} ETH`, 'yellow');
-                    this.printColored(`   Estimated Gas: ~${estimatedGasCost} ETH`, 'yellow');
-                    this.printColored(`   Total Needed: ~${totalNeeded} ETH`, 'yellow');
-                    this.printColored(`   Available: ${ethBalanceFormatted.toFixed(6)} ETH`, 'yellow');
-                }
-            }
-            
-            // Handle token approval for USDC input
-            if (!isETHInput) {
-                // USDC input - need approval
-                if (usdcStatus.balance === 0) {
-                    this.printColored("❌ USDC balance is 0. Cannot swap USDC.", 'red');
-                    return;
-                }
-                
-                if (!usdcStatus.hasApproval) {
-                    this.printColored("🔓 USDC not approved for SwapRouter. Approving now...", 'yellow');
-                    const approvalSuccess = await this.approveUSDC();
-                    if (!approvalSuccess) {
-                        this.printColored("❌ Failed to approve USDC. Cannot proceed with swap.", 'red');
-                        return;
-                    }
-                } else {
-                    this.printColored(`✅ USDC already approved (${usdcStatus.allowance} ${usdcStatus.symbol})`, 'green');
-                }
-            } else {
-                // ETH input - no approval needed
-                this.printColored(`✅ ETH input detected - no token approval required`, 'green');
-            }
-
-            // 2. Call the Hermes system and generate the update data required for reading data on-chain
-            const updateData = await this.generate();
-            
-            // Get oracle price from the Pyth data we just fetched
-            const oraclePrice = this.lastOraclePrice; // We'll store this in generate()
-            
-            // 3. Get current pool price and predict arbitrage
-            this.printColored("\n📊 Pool vs Oracle Price Analysis:", 'cyan');
-            const poolPriceData = await this.getPoolPrice();
-            
-            if (poolPriceData) {
-                this.printColored(`🏊 Pool Price: $${poolPriceData.ethUsdcPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 'blue');
-                this.printColored(`🐍 Oracle Price: $${oraclePrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 'blue');
-                this.printColored(`📈 Pool Tick: ${poolPriceData.tick}`, 'gray');
-                this.printColored(`🆔 Pool ID: ${poolPriceData.poolId.substring(0, 10)}...`, 'gray');
-                
-                // Predict arbitrage opportunity
-                const arbitragePrediction = this.predictArbitrage(
-                    poolPriceData.ethUsdcPrice, 
-                    oraclePrice, 
-                    direction, 
-                    amount
-                );
-                
-                this.printColored(`\n🔮 Arbitrage Prediction:`, 'magenta');
-                this.printColored(`   Price Difference: $${arbitragePrediction.priceDiff.toFixed(2)} (${arbitragePrediction.priceDiffPct.toFixed(3)}%)`, 'white');
-                this.printColored(`   Threshold: ${arbitragePrediction.threshold}%`, 'white');
-                this.printColored(`   Prediction: ${arbitragePrediction.prediction}`, arbitragePrediction.hasArbitrage ? 'yellow' : 'green');
-                this.printColored(`   Expected Action: ${arbitragePrediction.expectedAction}`, arbitragePrediction.hasArbitrage ? 'yellow' : 'green');
-            } else {
-                this.printColored(`⚠️  Could not fetch pool price for comparison`, 'yellow');
-            }
-            
-            // 4. Convert amount to Wei (assuming 18 decimals)
-            // Fix scientific notation issue by using toFixed() to get proper decimal string
-            const amountString = amount.toFixed(18).replace(/\.?0+$/, ''); // Remove trailing zeros
-            const amountWei = ethers.utils.parseEther(amountString);
+            // 1. Generate swap parameters (now more prominent and configurable)
+            const swapParams = this.generateSwapParams(amount, direction, exactInput);
             
             this.printColored(`\n📊 Swap Parameters:`, 'cyan');
-            this.printColored(`   Amount: ${amount} ${inputToken} (${amountWei.toString()} wei)`, 'white');
-            this.printColored(`   Amount String: ${amountString}`, 'gray');
-            this.printColored(`   Direction (zeroForOne): ${direction}`, 'white');
+            this.printColored(`   Original Amount: ${swapParams.originalAmount}`, 'white');
+            this.printColored(`   Amount Wei: ${swapParams.amountWei}`, 'white');
+            this.printColored(`   Amount Specified: ${swapParams.amountSpecified}`, 'white');
+            this.printColored(`   Swap Type: ${swapParams.swapType}`, 'white');
+            this.printColored(`   Direction: ${swapParams.direction}`, 'white');
+            this.printColored(`   Zero For One: ${swapParams.zeroForOne}`, 'white');
+            this.printColored(`   Price Limit: ${swapParams.priceLimit}`, 'gray');
+            
+            // 2. Call the Hermes system and generate the update data required for reading data on-chain
+            this.printColored(`\n🐍 Fetching Pyth Price Updates:`, 'magenta');
+            const updateData = await this.generate();
+            
+            this.printColored(`\n📦 Transaction Details:`, 'cyan');
             this.printColored(`   Update Data: ${(updateData.length - 2) / 2} bytes`, 'white');
-            this.printColored(`   Swapper: ${activeWallet.address}`, 'white');
-            this.printColored(`   Input Token: ${inputToken} (${isETHInput ? 'native ETH' : 'ERC20 token'})`, 'white');
+            this.printColored(`   Funding Wallet: ${this.fundingWalletAddress || activeWallet.address}`, 'white');
+            this.printColored(`   Target Contract: ${SwapRouterFrontend.SWAP_ROUTER_ADDRESS}`, 'white');
             
-            // 5. Prepare transaction options
-            const txOptions = { gasLimit: null }; // Will be set after gas estimation
-            
-            // For ETH input, add the ETH value to the transaction
-            if (isETHInput) {
-                txOptions.value = amountWei;
-                this.printColored(`   ETH Value: ${amount} ETH (${amountWei.toString()} wei)`, 'white');
-            }
-            
-            // 6. Make a call to the function swap() of the smart contract SwapRouter.sol with deployment details
+            // 3. Make a call to the function swap() of the smart contract SwapRouter.sol with deployment details
             this.printColored("\n⛽ Estimating gas for swap...", 'cyan');
             
-            const gasEstimate = await this.contract.estimateGas.swap(
-                amountWei,
-                direction,
-                updateData,
-                { 
-                    from: activeWallet.address,
-                    ...(isETHInput && { value: amountWei })
+            let gasEstimate;
+            try {
+                gasEstimate = await this.contract.estimateGas.swap(
+                    swapParams.amountToSwap,
+                    swapParams.zeroForOne,
+                    updateData,
+                    { from: activeWallet.address }
+                );
+            } catch (gasError) {
+                this.printColored("❌ Gas estimation failed - transaction would revert", 'red');
+                this.printColored("💡 This indicates the swap cannot be executed successfully", 'yellow');
+                
+                // Analyze the error
+                if (gasError.message.includes("execution reverted")) {
+                    this.printColored("\n🔍 Transaction Revert Analysis:", 'yellow');
+                    this.printColored("   • The contract rejected the transaction during simulation", 'white');
+                    this.printColored("   • This could be due to:", 'white');
+                    this.printColored("     - Hook validation failures (e.g., stale price data)", 'white');
+                    this.printColored("     - Insufficient liquidity in the pool", 'white');
+                    this.printColored("     - Slippage protection triggered", 'white');
+                    this.printColored("     - Hook contract bugs or missing functionality", 'white');
+                    this.printColored("     - Oracle price update failures", 'white');
+                    
+                    // Check if this is likely the old hook issue
+                    const poolConfig = await this.contract.getPoolConfiguration();
+                    const hooksAddress = poolConfig[4]; // hooks is the 5th element
+                    
+                    if (hooksAddress && hooksAddress !== "0x0000000000000000000000000000000000000000") {
+                        this.printColored("\n🎯 Likely Cause Analysis:", 'cyan');
+                        this.printColored(`   Hook Address: ${hooksAddress}`, 'white');
+                        this.printColored("   • The hook is configured but may not support Pyth price updates", 'yellow');
+                        this.printColored("   • If this is the old DetoxHook, it lacks the Pyth integration fix", 'yellow');
+                        this.printColored("   • The hook may be reverting when trying to process price data", 'yellow');
+                        this.printColored("\n💡 Recommended Actions:", 'green');
+                        this.printColored("   1. Deploy the updated DetoxHook with Pyth integration", 'white');
+                        this.printColored("   2. Update SwapRouter to point to the new hook", 'white');
+                        this.printColored("   3. Or test without hook data (empty bytes)", 'white');
+                    }
+                } else if (gasError.message.includes("UNPREDICTABLE_GAS_LIMIT")) {
+                    this.printColored("\n🔍 Gas Estimation Error:", 'yellow');
+                    this.printColored("   • The transaction behavior is unpredictable", 'white');
+                    this.printColored("   • This usually means the transaction would revert", 'white');
                 }
-            );
+                
+                this.printColored(`\n📋 Full Error Details:`, 'gray');
+                this.printColored(`   ${gasError.message}`, 'gray');
+                
+                return { success: false, error: "Gas estimation failed - transaction would revert", details: gasError.message };
+            }
             
             // Add 20% buffer
             const gasLimit = gasEstimate.mul(120).div(100);
-            txOptions.gasLimit = gasLimit;
-            
             this.printColored(`⛽ Gas estimate: ${gasEstimate.toLocaleString()} (limit: ${gasLimit.toLocaleString()})`, 'cyan');
-            
-            // Final balance check for ETH (including gas)
-            if (isETHInput) {
-                const gasCostWei = gasLimit.mul(await this.provider.getGasPrice());
-                const gasCostEth = parseFloat(ethers.utils.formatEther(gasCostWei));
-                const totalCostEth = amount + gasCostEth;
-                
-                this.printColored(`⛽ Estimated gas cost: ${gasCostEth.toFixed(6)} ETH`, 'cyan');
-                this.printColored(`💰 Total cost: ${totalCostEth.toFixed(6)} ETH (swap + gas)`, 'cyan');
-                
-                if (totalCostEth > ethBalanceFormatted) {
-                    this.printColored(`❌ Insufficient ETH for swap + gas!`, 'red');
-                    this.printColored(`   Total needed: ${totalCostEth.toFixed(6)} ETH`, 'red');
-                    this.printColored(`   Available: ${ethBalanceFormatted.toFixed(6)} ETH`, 'red');
-                    return;
-                }
-            }
             
             // Send transaction
             this.printColored("✍️  Signing and sending swap transaction...", 'cyan');
             
             const contractWithSigner = this.contract.connect(activeWallet);
-            const tx = await contractWithSigner.swap(
-                amountWei,
-                direction,
-                updateData,
-                txOptions
-            );
+            let tx;
+            try {
+                tx = await contractWithSigner.swap(
+                    swapParams.amountToSwap,
+                    swapParams.zeroForOne,
+                    updateData,
+                    { gasLimit: gasLimit }
+                );
+            } catch (txError) {
+                this.printColored("❌ Transaction submission failed", 'red');
+                this.printColored(`💡 Error: ${txError.message}`, 'yellow');
+                return { success: false, error: "Transaction submission failed", details: txError.message };
+            }
             
             this.printColored(`✅ Swap transaction sent: ${tx.hash}`, 'green');
             this.printColored("⏳ Waiting for confirmation...", 'cyan');
             
             // Wait for confirmation
-            const receipt = await tx.wait();
+            let receipt;
+            try {
+                receipt = await tx.wait();
+            } catch (waitError) {
+                this.printColored("❌ Transaction confirmation failed", 'red');
+                this.printColored(`💡 Error: ${waitError.message}`, 'yellow');
+                return { success: false, error: "Transaction confirmation failed", details: waitError.message };
+            }
             
             if (receipt && receipt.status === 1) {
                 this.printColored("✅ Swap transaction confirmed!", 'green');
@@ -965,26 +898,19 @@ class SwapRouterFrontend {
                 // Parse logs for SwapExecuted event
                 this.parseSwapEvents(receipt);
                 
-                // Check final balances
-                this.printColored("\n🔍 Final balances:", 'cyan');
-                const finalEthBalance = await this.provider.getBalance(activeWallet.address);
-                const finalEthFormatted = parseFloat(ethers.utils.formatEther(finalEthBalance));
-                this.printColored(`💰 ETH Balance: ${finalEthFormatted.toFixed(6)} ETH`, 'cyan');
-                await this.checkUSDCStatus();
+                return { success: true, txHash: tx.hash, receipt: receipt };
             } else {
                 this.printColored("❌ Swap transaction failed!", 'red');
+                this.printColored(`📊 Block: ${receipt?.blockNumber || 'unknown'}`, 'cyan');
+                this.printColored(`⛽ Gas used: ${receipt?.gasUsed?.toLocaleString() || 'unknown'}`, 'cyan');
+                if (tx.hash) {
+                    this.printColored(`🔗 Arbiscan: https://sepolia.arbiscan.io/tx/${tx.hash}`, 'blue');
+                }
+                return { success: false, error: "Transaction reverted", receipt: receipt };
             }
         } catch (error) {
             this.printColored(`❌ Error in executeSwap(): ${error}`, 'red');
-            
-            // Provide helpful error analysis
-            if (error.message.includes('insufficient funds')) {
-                this.printColored(`💡 This looks like an insufficient funds error`, 'yellow');
-                this.printColored(`   Check your ETH balance for gas costs`, 'yellow');
-            } else if (error.message.includes('execution reverted')) {
-                this.printColored(`💡 Transaction was reverted by the contract`, 'yellow');
-                this.printColored(`   This could be due to slippage, pool liquidity, or hook validation`, 'yellow');
-            }
+            return { success: false, error: error.message, details: error };
         }
     }
 
@@ -999,7 +925,7 @@ class SwapRouterFrontend {
         
         if (!this.contract || !this.wallet) {
             this.printColored("❌ Contract or wallet not available", 'red');
-            return;
+            return { success: false, error: "Contract or wallet not available" };
         }
 
         // Use funding wallet if specified, otherwise use default wallet
@@ -1028,10 +954,17 @@ class SwapRouterFrontend {
             // Estimate gas
             this.printColored("\n⛽ Estimating gas for updatePoolConfiguration...", 'cyan');
             
-            const gasEstimate = await this.contract.estimateGas.updatePoolConfiguration(
-                poolKey,
-                { from: activeWallet.address }
-            );
+            let gasEstimate;
+            try {
+                gasEstimate = await this.contract.estimateGas.updatePoolConfiguration(
+                    poolKey,
+                    { from: activeWallet.address }
+                );
+            } catch (gasError) {
+                this.printColored("❌ Gas estimation failed - transaction would revert", 'red');
+                this.printColored(`💡 Error: ${gasError.message}`, 'yellow');
+                return { success: false, error: "Gas estimation failed", details: gasError.message };
+            }
             
             // Add 20% buffer
             const gasLimit = gasEstimate.mul(120).div(100);
@@ -1041,16 +974,30 @@ class SwapRouterFrontend {
             this.printColored("✍️  Signing and sending updatePoolConfiguration transaction...", 'cyan');
             
             const contractWithSigner = this.contract.connect(activeWallet);
-            const tx = await contractWithSigner.updatePoolConfiguration(
-                poolKey,
-                { gasLimit: gasLimit }
-            );
+            let tx;
+            try {
+                tx = await contractWithSigner.updatePoolConfiguration(
+                    poolKey,
+                    { gasLimit: gasLimit }
+                );
+            } catch (txError) {
+                this.printColored("❌ Transaction submission failed", 'red');
+                this.printColored(`💡 Error: ${txError.message}`, 'yellow');
+                return { success: false, error: "Transaction submission failed", details: txError.message };
+            }
             
             this.printColored(`✅ UpdatePoolConfiguration transaction sent: ${tx.hash}`, 'green');
             this.printColored("⏳ Waiting for confirmation...", 'cyan');
             
             // Wait for confirmation
-            const receipt = await tx.wait();
+            let receipt;
+            try {
+                receipt = await tx.wait();
+            } catch (waitError) {
+                this.printColored("❌ Transaction confirmation failed", 'red');
+                this.printColored(`💡 Error: ${waitError.message}`, 'yellow');
+                return { success: false, error: "Transaction confirmation failed", details: waitError.message };
+            }
             
             if (receipt && receipt.status === 1) {
                 this.printColored("✅ UpdatePoolConfiguration transaction confirmed!", 'green');
@@ -1058,11 +1005,14 @@ class SwapRouterFrontend {
                 this.printColored(`⛽ Gas used: ${receipt.gasUsed.toLocaleString()}`, 'cyan');
                 this.printColored(`🔗 Arbiscan: https://sepolia.arbiscan.io/tx/${tx.hash}`, 'blue');
                 this.printColored(`ℹ️  Note: PoolId '${poolId}' is not stored on-chain (client-side only)`, 'yellow');
+                return { success: true, txHash: tx.hash, receipt: receipt };
             } else {
                 this.printColored("❌ UpdatePoolConfiguration transaction failed!", 'red');
+                return { success: false, error: "Transaction reverted", receipt: receipt };
             }
         } catch (error) {
             this.printColored(`❌ Error in updatePool(): ${error}`, 'red');
+            return { success: false, error: error.message, details: error };
         }
     }
 
@@ -1076,7 +1026,7 @@ class SwapRouterFrontend {
         
         if (!this.contract) {
             this.printColored("❌ Contract not available", 'red');
-            return;
+            return { success: false, error: "Contract not available" };
         }
         
         try {
@@ -1106,8 +1056,11 @@ class SwapRouterFrontend {
             this.printColored("\n📋 Pool Key (JSON format - contract fields only):", 'yellow');
             console.log(JSON.stringify(poolKey, null, 2));
             
+            return { success: true, poolConfig: poolKey };
+            
         } catch (error) {
             this.printColored(`❌ Error in getPool(): ${error}`, 'red');
+            return { success: false, error: error.message, details: error };
         }
     }
 
@@ -1122,7 +1075,8 @@ class SwapRouterFrontend {
         try {
             // Validate the address format
             if (!ethers.utils.isAddress(address)) {
-                throw new Error("Invalid Ethereum address format");
+                this.printColored("❌ Invalid Ethereum address format", 'red');
+                return { success: false, error: "Invalid Ethereum address format" };
             }
             
             this.fundingWalletAddress = address;
@@ -1137,8 +1091,11 @@ class SwapRouterFrontend {
                 this.printColored(`   Make sure to set DEPLOYMENT_KEY/PRIVATE_KEY for this wallet`, 'yellow');
             }
             
+            return { success: true, address: address };
+            
         } catch (error) {
             this.printColored(`❌ Error in setFundingWallet(): ${error}`, 'red');
+            return { success: false, error: error.message, details: error };
         }
     }
 
@@ -1257,14 +1214,15 @@ class SwapRouterFrontend {
             }
             
             // Execute swap (simplified version without all the logging)
-            const success = await this.executeSwapQuiet(amount, direction, updateData);
+            const result = await this.executeSwap(amount, direction);
             
             // Get post-swap state
             const postSwapPoolPrice = await this.getPoolPrice();
             const postSwapBalances = await this.getBalances();
             
             return {
-                success,
+                success: result.success,
+                error: result.error,
                 preSwapPoolPrice: preSwapPoolPrice?.ethUsdcPrice,
                 postSwapPoolPrice: postSwapPoolPrice?.ethUsdcPrice,
                 oraclePrice,
@@ -1279,67 +1237,6 @@ class SwapRouterFrontend {
                 success: false,
                 error: error.message
             };
-        }
-    }
-
-    /**
-     * Quiet version of executeSwap for testing
-     */
-    async executeSwapQuiet(amount, direction, updateData) {
-        const activeWallet = this.fundingWalletAddress ? 
-            new ethers.Wallet(this.wallet.privateKey, this.provider) : this.wallet;
-        
-        try {
-            // Convert amount to Wei
-            const amountString = amount.toFixed(18).replace(/\.?0+$/, '');
-            const amountWei = ethers.utils.parseEther(amountString);
-            
-            // Prepare transaction options
-            const txOptions = {};
-            const isETHInput = direction;
-            
-            if (isETHInput) {
-                txOptions.value = amountWei;
-            }
-            
-            // Estimate gas
-            const gasEstimate = await this.contract.estimateGas.swap(
-                amountWei,
-                direction,
-                updateData,
-                { 
-                    from: activeWallet.address,
-                    ...(isETHInput && { value: amountWei })
-                }
-            );
-            
-            txOptions.gasLimit = gasEstimate.mul(120).div(100);
-            
-            // Send transaction
-            const contractWithSigner = this.contract.connect(activeWallet);
-            const tx = await contractWithSigner.swap(
-                amountWei,
-                direction,
-                updateData,
-                txOptions
-            );
-            
-            this.printColored(`✅ Swap sent: ${tx.hash.substring(0, 10)}...`, 'green');
-            
-            // Wait for confirmation
-            const receipt = await tx.wait();
-            
-            if (receipt && receipt.status === 1) {
-                this.printColored(`✅ Confirmed in block ${receipt.blockNumber}`, 'green');
-                return true;
-            } else {
-                this.printColored(`❌ Transaction failed`, 'red');
-                return false;
-            }
-            
-        } catch (error) {
-            this.printColored(`❌ Swap failed: ${error.message}`, 'red');
-            return false;
         }
     }
 
@@ -1458,6 +1355,8 @@ async function main() {
         // Initialize frontend
         const frontend = new SwapRouterFrontend();
         
+        let operationResult = { success: true }; // Track overall success
+        
         switch (flag) {
             case '--swap':
                 if (args.length < 3) {
@@ -1480,7 +1379,30 @@ async function main() {
                     process.exit(1);
                 }
                 
-                await frontend.executeSwap(amount, direction);
+                operationResult = await frontend.executeSwap(amount, direction);
+                break;
+                
+            case '--swapout':
+                if (args.length < 3) {
+                    console.log(chalk.red('❌ --swapout requires <amount> <direction> arguments'));
+                    console.log(chalk.white('Example: yarn swap-router --swapout 0.02 true'));
+                    process.exit(1);
+                }
+                
+                const swapoutAmount = parseFloat(args[1]);
+                const swapoutDirection = ['true', '1'].includes(args[2].toLowerCase());
+                
+                if (isNaN(swapoutAmount)) {
+                    console.log(chalk.red('❌ Invalid amount. Please provide a valid number.'));
+                    process.exit(1);
+                }
+                
+                if (!['true', 'false', '1', '0'].includes(args[2].toLowerCase())) {
+                    console.log(chalk.red('❌ Invalid direction. Use true/false or 1/0.'));
+                    process.exit(1);
+                }
+                
+                operationResult = await frontend.executeSwap(swapoutAmount, swapoutDirection, false);
                 break;
                 
             case '--updatepool':
@@ -1502,11 +1424,11 @@ async function main() {
                     process.exit(1);
                 }
                 
-                await frontend.updatePool(currency0, currency1, fee, tickSpacing, hooks, poolId);
+                operationResult = await frontend.updatePool(currency0, currency1, fee, tickSpacing, hooks, poolId);
                 break;
                 
             case '--getpool':
-                await frontend.getPool();
+                operationResult = await frontend.getPool();
                 break;
                 
             case '--wallet':
@@ -1517,7 +1439,7 @@ async function main() {
                 }
                 
                 const walletAddress = args[1];
-                frontend.setFundingWallet(walletAddress);
+                operationResult = frontend.setFundingWallet(walletAddress);
                 break;
                 
             case '--approve':
@@ -1534,7 +1456,16 @@ async function main() {
                 process.exit(1);
         }
         
-        console.log(chalk.green.bold("\n🎉 Operation completed successfully!"));
+        // Only show success message if operation actually succeeded
+        if (operationResult && operationResult.success !== false) {
+            console.log(chalk.green.bold("\n🎉 Operation completed successfully!"));
+        } else if (operationResult && operationResult.success === false) {
+            console.log(chalk.red.bold("\n❌ Operation failed!"));
+            if (operationResult.error) {
+                console.log(chalk.red(`💡 Error: ${operationResult.error}`));
+            }
+            process.exit(1);
+        }
         
     } catch (error) {
         if (error instanceof Error) {
