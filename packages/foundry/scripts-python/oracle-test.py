@@ -209,6 +209,13 @@ def test_pyth_oracle(hermes_data):
         
         print_colored("📊 Testing Oracle Functions:", 'magenta')
         
+        # Before reading price, update it first:
+        update_fee = oracle.functions.getUpdateFee(update_data_array).call()
+        oracle.functions.updatePriceFeeds(update_data_array).transact({
+            'value': update_fee,
+            'from': w3.eth.defaultAccount
+        })
+        
         # Test 1: Get update fee
         try:
             update_fee = oracle.functions.getUpdateFee(update_data_array).call()

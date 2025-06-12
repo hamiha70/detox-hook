@@ -6,6 +6,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 interface IPoolSwapTest {
     struct TestSettings {
@@ -21,10 +22,10 @@ interface IPoolSwapTest {
     ) external payable returns (BalanceDelta delta);
 }
 
-/// @title SwapRouter
-/// @notice A router contract that simplifies swapping through PoolSwapTest
+/// @title SwapRouterFixed
+/// @notice A router contract that simplifies swapping through PoolSwapTest with proper price limits
 /// @dev This contract organizes swap parameters and calls PoolSwapTest.swap
-contract SwapRouter {
+contract SwapRouterFixed {
     
     /// @notice The PoolSwapTest contract address
     IPoolSwapTest public immutable poolSwapTest;
@@ -81,15 +82,14 @@ contract SwapRouter {
         int256 amountToSwap, 
         bool zeroForOne, 
         bytes calldata updateData
-    )external payable returns (BalanceDelta delta) {
+    ) external payable returns (BalanceDelta delta) {
         if (amountToSwap == 0) revert InvalidSwapAmount();
         
-        
-        // Create swap parameters
+        // Create swap parameters with proper TickMath price limits
         SwapParams memory swapParams = SwapParams({
             zeroForOne: zeroForOne,
             amountSpecified: amountToSwap,
-            sqrtPriceLimitX96: zeroForOne ? 4295128739 : 1461446703485210103287273052203988822378723970342 // Min/max prices
+            sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
         });
         
         // Execute the swap through PoolSwapTest
@@ -104,8 +104,6 @@ contract SwapRouter {
         
         return delta;
     }
-    
-    
     
     /// @notice Update the pool configuration
     /// @param newPoolKey The new pool configuration
