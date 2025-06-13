@@ -229,12 +229,12 @@ library ChainAddresses {
     /// @return The PoolSwapTest address
     function getPoolSwapTest(uint256 chainId) internal pure returns (address) {
         if (chainId == ARBITRUM_SEPOLIA) {
-            return 0xf3A39C86dbd13C45365E57FB90fe413371F65AF8;
+            return 0x9A8ca723F5dcCb7926D00B71deC55c2fEa1F50f7;
         }
         if (chainId == LOCAL_ANVIL) {
             return address(0);
         }
-
+        // TODO: Add PoolSwapTest addresses for Unichain Sepolia, Unichain Mainnet, Arbitrum Mainnet
         revert UnsupportedChain(chainId);
     }
 

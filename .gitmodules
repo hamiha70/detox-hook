@@ -16,3 +16,6 @@
 [submodule "packages/foundry/lib/pyth-sdk-solidity"]
 	path = packages/foundry/lib/pyth-sdk-solidity
 	url = https://github.com/pyth-network/pyth-sdk-solidity
+[submodule "packages/foundry/lib/foundry-devops"]
+	path = packages/foundry/lib/foundry-devops
+	url = https://github.com/Cyfrin/foundry-devops

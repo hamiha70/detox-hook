@@ -19,11 +19,13 @@ import { ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.
 
 import { DetoxHook } from "../src/DetoxHook.sol";
 import { ChainAddresses } from "./ChainAddresses.sol";
+import { DeploymentAddresses } from "./DeploymentAddresses.sol";
+import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
 
 /// @title Complete DetoxHook Deployment Script
 /// @notice Comprehensive script that deploys DetoxHook, initializes pools, and adds liquidity
 /// @dev Handles balance checks, verification, funding, and pool setup with different configurations
-contract DeployDetoxHookComplete is Script {
+contract DeployDetoxHookComplete is Script, DeploymentAddresses {
     using ChainAddresses for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -125,14 +127,17 @@ contract DeployDetoxHookComplete is Script {
         // Step 6: Add liquidity
         _addLiquidity();
         
+        // Step 7: Deploy SwapRouterFixed
+        _deploySwapRouterFixed();
+        
         vm.stopBroadcast();
         
-        // Step 7: Verify contracts (only on real networks)
+        // Step 8: Verify contracts (only on real networks)
         if (!isForked && block.chainid == ChainAddresses.ARBITRUM_SEPOLIA) {
             _verifyContracts();
         }
         
-        // Step 8: Log final summary
+        // Step 9: Log final summary
         _logDeploymentSummary();
         
         emit DeploymentCompleted(address(hook), poolId1, poolId2);
@@ -158,7 +163,15 @@ contract DeployDetoxHookComplete is Script {
         
         bool ethSufficient = ethBalance >= MIN_ETH_BALANCE;
         bool usdcSufficient = usdcBalance >= MIN_USDC_BALANCE;
-        bool sufficientBalance = ethSufficient && usdcSufficient;
+        bool sufficientBalance;
+        if (block.chainid == ChainAddresses.LOCAL_ANVIL) {
+            // Bypass USDC check for local testing
+            usdcSufficient = true;
+            sufficientBalance = ethSufficient;
+            console.log("[WARNING] Bypassing USDC balance check for LOCAL_ANVIL (31337). No USDC required for local testing.");
+        } else {
+            sufficientBalance = ethSufficient && usdcSufficient;
+        }
         
         console.log("ETH sufficient:", ethSufficient);
         console.log("USDC sufficient:", usdcSufficient);
@@ -269,6 +282,8 @@ contract DeployDetoxHookComplete is Script {
         console.log("");
         
         emit DetoxHookDeployed(address(hook), salt, block.chainid);
+        // Store DetoxHook address (versioned)
+        storeAddress(DETOX_HOOK_KEY, address(hook));
     }
     
     /// @notice External wrapper for salt mining (for try-catch)
@@ -606,6 +621,12 @@ contract DeployDetoxHookComplete is Script {
         
         emit PoolInitialized(poolId1, SQRT_PRICE_2500, TICK_SPACING_POOL_1);
         emit PoolInitialized(poolId2, SQRT_PRICE_2600, TICK_SPACING_POOL_2);
+        // Store Pool IDs (versioned, as hex string)
+        storePoolId(POOL_1_KEY, PoolId.unwrap(poolId1));
+        storePoolId(POOL_2_KEY, PoolId.unwrap(poolId2));
+        // Store PoolKeys (versioned, as ABI-encoded bytes)
+        storePoolKey(POOL_1_KEY, abi.encode(poolKey1));
+        storePoolKey(POOL_2_KEY, abi.encode(poolKey2));
     }
     
     /// @notice Add liquidity to both pools
@@ -678,9 +699,36 @@ contract DeployDetoxHookComplete is Script {
         emit LiquidityAdded(poolId2, LIQUIDITY_USDC_AMOUNT, ethAmount2);
     }
     
+    /// @notice Deploy SwapRouterFixed
+    function _deploySwapRouterFixed() internal {
+        console.log("=== Step 7: Deploy SwapRouterFixed ===");
+        address poolSwapTest = ChainAddresses.getPoolSwapTest(block.chainid);
+        require(poolSwapTest != address(0), "PoolSwapTest address not set for this chain");
+        address detoxHook = getLatestAddress(DETOX_HOOK_KEY);
+        require(detoxHook != address(0), "DetoxHook address not found");
+        bytes memory poolKeyEncoded = getLatestPoolKey(POOL_1_KEY);
+        require(poolKeyEncoded.length > 0, "PoolKey not found");
+        PoolKey memory poolKey = abi.decode(poolKeyEncoded, (PoolKey));
+        // Set hooks to latest DetoxHook
+        poolKey.hooks = IHooks(detoxHook);
+        SwapRouterFixed swapRouterFixed = new SwapRouterFixed(poolSwapTest, poolKey);
+        storeAddress(SWAP_ROUTER_FIXED_KEY, address(swapRouterFixed));
+        console.log("SwapRouterFixed deployed at:", address(swapRouterFixed));
+        // Verify configuration
+        PoolKey memory deployedPoolKey = swapRouterFixed.getPoolConfiguration();
+        console.log("Verified pool configuration:");
+        console.log("  Currency0:", Currency.unwrap(deployedPoolKey.currency0));
+        console.log("  Currency1:", Currency.unwrap(deployedPoolKey.currency1));
+        console.log("  Fee:", deployedPoolKey.fee);
+        console.log("  TickSpacing:", deployedPoolKey.tickSpacing);
+        console.log("  Hooks:", address(deployedPoolKey.hooks));
+        require(address(deployedPoolKey.hooks) == detoxHook, "SwapRouterFixed not configured with correct DetoxHook");
+        console.log("SwapRouterFixed configuration verified.");
+    }
+    
     /// @notice Verify contracts on block explorer
     function _verifyContracts() internal view {
-        console.log("=== Step 7: Contract Verification ===");
+        console.log("=== Step 8: Contract Verification ===");
         console.log("Verifying DetoxHook on Arbitrum Sepolia Blockscout...");
         
         // Note: Actual verification would be done via forge verify command

@@ -29,3 +29,7 @@ bracket_spacing = true
 int_types = "long"
 
 # See more config options https://book.getfoundry.sh/reference/config/overview
+
+fs_permissions = [
+    { access = "read", path = "./broadcast" }
+]

@@ -324,8 +324,12 @@ There are two key address management files:
 
 ### 2. DeploymentAddresses.sol
 - **Purpose:** Stores and retrieves addresses of contracts deployed by our own scripts (e.g., DetoxHook, SwapRouterFixed, pools) on a per-chain basis.
-- **Usage:** Used to pass addresses between deployment steps and scripts, and to enable modular, repeatable deployments across multiple networks.
-- **Note:** This is a utility contract, not a standalone script, and is imported by deployment scripts.
+- **Versioning:** Each contract key now stores an **array of addresses** (one per deployment/version). The most recent (latest) address is always returned by default, but you can retrieve any previous version by index.
+- **Usage:**
+  - `getLatestAddress(key)`: returns the most recent deployment address for a contract key.
+  - `getAddressByVersion(key, version)`: returns a specific version (0 = first, N = latest).
+  - `getAllAddresses(key)`: returns all stored addresses for a contract key.
+- **Note:** This enables robust auditability, easy rollbacks, and safe multi-deployment workflows.
 
 **This separation ensures clarity, maintainability, and robust multi-chain deployment workflows.**
 
