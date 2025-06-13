@@ -55,22 +55,30 @@
     "ponder:typecheck": "yarn workspace @se-2/ponder typecheck",
     "precommit": "lint-staged",
     "start": "yarn workspace @se-2/nextjs dev",
+    "swap-router": "yarn workspace @se-2/foundry swap-router",
+    "swap-router-opt": "yarn workspace @se-2/foundry swap-router-opt",
+    "swap-advanced": "yarn workspace @se-2/foundry swap-advanced",
     "test": "yarn foundry:test",
     "test:detox": "yarn workspace @se-2/foundry test --match-contract DetoxHook",
     "test:fork": "yarn workspace @se-2/foundry test --match-contract DetoxHookArbitrumSepoliaFork",
     "test:hookminer": "yarn workspace @se-2/foundry test --match-contract HookMinerTest",
     "update:external": "yarn workspace @se-2/foundry update:external",
+    "validate-system": "yarn workspace @se-2/foundry validate-system",
     "vercel": "yarn workspace @se-2/nextjs vercel",
     "vercel:login": "yarn workspace @se-2/nextjs vercel:login",
     "vercel:yolo": "yarn workspace @se-2/nextjs vercel:yolo",
     "verify": "yarn foundry:verify"
   },
   "devDependencies": {
+    "@types/qs": "^6",
     "husky": "~9.1.6",
     "lint-staged": "~13.2.2"
   },
   "packageManager": "yarn@3.2.3",
   "engines": {
     "node": ">=20.18.3"
+  },
+  "dependencies": {
+    "qs": "^6.14.0"
   }
 }

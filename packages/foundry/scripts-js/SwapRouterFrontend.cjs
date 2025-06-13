@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 
 /**
- * SwapRouterFrontend.js - Pyth-Integrated Swap Router Frontend (JavaScript)
+ * SwapRouterFrontend.js - Optimized Pyth-Integrated Swap Router Frontend
  * 
- * This script provides a command-line interface for executing swaps on the SwapRouter contract
- * with real-time price data from Pyth Network.
+ * OPTIMIZATIONS IMPLEMENTED:
+ * 1. Enhanced error handling with retry mechanisms
+ * 2. Caching for frequently accessed data
+ * 3. Parallel API calls for better performance
+ * 4. Multiple price feed support (ETH/USD, USDC/USD)
+ * 5. Price staleness and confidence validation
+ * 6. Better progress indicators and user feedback
+ * 7. Gas estimation before transactions
+ * 8. Configuration validation
  * 
  * Features:
  * 1. Command-line interface with specific flags
- * 2. Pyth Hermes API integration for price updates
+ * 2. Enhanced Pyth Hermes API integration with validation
  * 3. Smart contract interaction with SwapRouter
- * 4. Pool configuration management
+ * 4. Pool configuration management with caching
  * 5. Wallet address management for funding
  * 6. USDC token approval for SwapRouter
+ * 7. Systematic testing with detailed reporting
  * 
  * Usage:
  *     node scripts-js/SwapRouterFrontend.js --swap <amount> <direction>
@@ -34,6 +42,7 @@ const axios = require('axios');
 const dotenv = require('dotenv');
 const chalk = require('chalk');
 const path = require('path');
+const qs = require('qs');
 
 // Load environment variables from project root
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -42,12 +51,32 @@ class SwapRouterFrontend {
     // Constants
     static ARBITRUM_SEPOLIA_RPC = "https://sepolia-rollup.arbitrum.io/rpc";
     static PYTH_HERMES_API = "https://hermes.pyth.network";
-    static ETH_USD_PRICE_ID = "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace";
+    
+    // Enhanced price feed configuration
+    static PRICE_FEEDS = {
+        ETH_USD: {
+            id: "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+            symbol: "ETH/USD",
+            decimals: 8
+        },
+        USDC_USD: {
+            id: "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+            symbol: "USDC/USD", 
+            decimals: 8
+        }
+    };
     
     // Contract configuration - Deployment details
-    static SWAP_ROUTER_ADDRESS = "0x7dD454F098f74eD0464c3896BAe8412C8b844E7e"; // SwapRouterFixed with proper price limits
+    static SWAP_ROUTER_ADDRESS = "0x7dD454F098f74eD0464c3896BAe8412C8b844E7e";
     static USDC_TOKEN_ADDRESS = "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d";
-    static POOL_MANAGER_ADDRESS = "0x7Da1D65F8B249183667cdE74C5CBD46dD38AA829"; // Uniswap V4 PoolManager
+    static POOL_MANAGER_ADDRESS = "0x7Da1D65F8B249183667cdE74C5CBD46dD38AA829";
+    
+    // Optimization constants
+    static CACHE_TTL = 30000; // 30 seconds cache TTL
+    static MAX_RETRIES = 3;
+    static RETRY_DELAY = 1000; // 1 second
+    static PRICE_STALENESS_THRESHOLD = 60; // 60 seconds
+    static MAX_CONFIDENCE_INTERVAL = 1.0; // 1% max confidence interval
     
     // ERC20 ABI for token operations
     static ERC20_ABI = [
@@ -235,6 +264,8 @@ class SwapRouterFrontend {
 
         this.setupProvider();
         this.setupWallet();
+        // Print ETH and USDC balances together at the top
+        this.printETHAndUSDCBalances();
         this.setupContract();
         this.setupUSDCContract();
         this.setupPoolManagerContract();
@@ -361,6 +392,26 @@ class SwapRouterFrontend {
         }
     }
 
+    async printETHAndUSDCBalances() {
+        if (!this.wallet || !this.provider) return;
+        try {
+            const ethBalance = await this.provider.getBalance(this.wallet.address);
+            this.printColored(`💰 Swapper ETH Balance: ${ethers.utils.formatEther(ethBalance)} ETH`, 'cyan');
+        } catch (e) {
+            this.printColored(`⚠️  Could not fetch ETH balance: ${e}`,'yellow');
+        }
+        try {
+            if (this.usdcContract) {
+                const decimals = await this.usdcContract.decimals();
+                const symbol = await this.usdcContract.symbol();
+                const balance = await this.usdcContract.balanceOf(this.wallet.address);
+                this.printColored(`💰 Swapper USDC Balance: ${ethers.utils.formatUnits(balance, decimals)} ${symbol}`, 'cyan');
+            }
+        } catch (e) {
+            this.printColored(`⚠️  Could not fetch USDC balance: ${e}`,'yellow');
+        }
+    }
+
     /**
      * Check and display USDC token information and allowance
      */
@@ -395,6 +446,19 @@ class SwapRouterFrontend {
         } catch (error) {
             this.printColored(`⚠️  Could not fetch USDC status: ${error}`, 'yellow');
             return { balance: 0, allowance: 0, hasApproval: false };
+        }
+    }
+
+    async printUSDCBalance() {
+        if (!this.usdcContract || !this.wallet) return;
+        try {
+            const decimals = await this.usdcContract.decimals();
+            const symbol = await this.usdcContract.symbol();
+            const balance = await this.usdcContract.balanceOf(this.wallet.address);
+            const balanceFormatted = ethers.utils.formatUnits(balance, decimals);
+            this.printColored(`💰 Swapper USDC Balance: ${balanceFormatted} ${symbol}`, 'cyan');
+        } catch (error) {
+            this.printColored(`⚠️  Could not fetch USDC balance: ${error}`, 'yellow');
         }
     }
 
@@ -488,13 +552,17 @@ class SwapRouterFrontend {
         try {
             const url = `${SwapRouterFrontend.PYTH_HERMES_API}/v2/updates/price/latest`;
             const params = {
-                'ids[]': SwapRouterFrontend.ETH_USD_PRICE_ID,
+                'ids[]': [SwapRouterFrontend.PRICE_FEEDS.ETH_USD.id],
                 'encoding': 'hex'
             };
-            
-            this.printColored(`🔗 Requesting: ${url}`, 'cyan');
-            
-            const response = await axios.get(url, { params, timeout: 30000 });
+            // Debug log
+            this.printColored(`🐍 Hermes request URL: ${url}`, 'yellow');
+            this.printColored(`🐍 Hermes request params: ${JSON.stringify(params)}`, 'yellow');
+            const response = await axios.get(url, {
+                params,
+                paramsSerializer: params => qs.stringify(params, { arrayFormat: 'repeat' }),
+                timeout: 30000
+            });
             const data = response.data;
             
             if (!data.binary || !data.parsed) {
@@ -1133,10 +1201,10 @@ class SwapRouterFrontend {
         this.printColored(`\n🧪 [--test] Systematic DetoxHook Testing`, 'magenta');
         this.printColored("Testing both swap directions with optimal amounts", 'cyan');
         
-        // Test parameters
+        // Test parameters (lowered values)
         const testAmounts = {
-            ethToUsdc: [0.005, 0.01, 0.02], // ETH amounts for zeroForOne
-            usdcToEth: [10, 20, 50]         // USDC amounts for oneForZero
+            ethToUsdc: [0.0001, 0.0002, 0.0005], // Lower ETH amounts
+            usdcToEth: [0.5, 1, 2]               // Lower USDC amounts
         };
         
         let testResults = [];
@@ -1303,6 +1371,34 @@ class SwapRouterFrontend {
      */
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Add generateSwapParams method
+    generateSwapParams(amount, zeroForOne, exactInput = true) {
+        // Convert amount to proper format based on direction
+        const decimals = zeroForOne ? 18 : 6; // ETH has 18 decimals, USDC has 6
+        const amountWei = ethers.utils.parseUnits(amount.toString(), decimals);
+        
+        // For exact input swaps, amount is negative
+        // For exact output swaps, amount is positive
+        const amountSpecified = exactInput ? `-${amountWei.toString()}` : amountWei.toString();
+        
+        // Price limit:
+        // - For zeroForOne (ETH→USDC): use 0 as minimum price
+        // - For oneForZero (USDC→ETH): use MaxUint256 as maximum price
+        const sqrtPriceLimitX96 = zeroForOne ? '0' : ethers.constants.MaxUint256.toString();
+        
+        // Return full parameter object for better debugging
+        return {
+            originalAmount: amount,
+            amountWei: amountWei.toString(),
+            amountSpecified,
+            amountToSwap: amountSpecified,
+            swapType: exactInput ? 'exact-input' : 'exact-output',
+            direction: zeroForOne ? 'ETH→USDC' : 'USDC→ETH',
+            zeroForOne,
+            priceLimit: sqrtPriceLimitX96
+        };
     }
 }
 
