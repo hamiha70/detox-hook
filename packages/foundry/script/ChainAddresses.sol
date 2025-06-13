@@ -7,7 +7,10 @@ pragma solidity ^0.8.20;
 library ChainAddresses {
     // Chain IDs
     uint256 public constant ARBITRUM_SEPOLIA = 421614;
+    uint256 public constant UNICHAIN_SEPOLIA = 11155111; // Unichain Sepolia
     uint256 public constant LOCAL_ANVIL = 31337;
+    uint256 public constant ARBITRUM_MAINNET = 42161;
+    uint256 public constant UNICHAIN_MAINNET = 130;
 
     // Custom errors
     error UnsupportedChain(uint256 chainId);
@@ -19,6 +22,15 @@ library ChainAddresses {
     function getPoolManager(uint256 chainId) internal pure returns (address) {
         if (chainId == ARBITRUM_SEPOLIA) {
             return 0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317;
+        }
+        if (chainId == UNICHAIN_SEPOLIA) {
+            return 0x8f75D7147BEb96c4b29204639D8e8e88D9228909; // Unichain Sepolia PoolManager (checksummed)
+        }
+        if (chainId == UNICHAIN_MAINNET) {
+            return 0x1F98400000000000000000000000000000000004; // Unichain Mainnet PoolManager (checksummed)
+        }
+        if (chainId == ARBITRUM_MAINNET) {
+            return 0x9a13F98Cb987694C9F086b1F5eB990EeA8264Ec3; // Arbitrum Mainnet PoolManager (checksummed)
         }
         if (chainId == LOCAL_ANVIL) {
             // For local testing - will be deployed
@@ -35,6 +47,15 @@ library ChainAddresses {
         if (chainId == ARBITRUM_SEPOLIA) {
             return 0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF; // Pyth Oracle on Arbitrum Sepolia
         }
+        if (chainId == UNICHAIN_SEPOLIA) {
+            return 0x2880aB155794e7179c9eE2e38200202908C17B43; // Pyth Oracle on Unichain Sepolia (checksummed)
+        }
+        if (chainId == UNICHAIN_MAINNET) {
+            return 0x0000000000000000000000000000000000000000; // TODO: Add Pyth Oracle for Unichain Mainnet
+        }
+        if (chainId == ARBITRUM_MAINNET) {
+            return 0x0000000000000000000000000000000000000000; // TODO: Add Pyth Oracle for Arbitrum Mainnet
+        }
         if (chainId == LOCAL_ANVIL) {
             // For local testing - will be mocked
             return address(0);
@@ -49,6 +70,15 @@ library ChainAddresses {
     function getUSDC(uint256 chainId) internal pure returns (address) {
         if (chainId == ARBITRUM_SEPOLIA) {
             return 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d; // USDC on Arbitrum Sepolia
+        }
+        if (chainId == UNICHAIN_SEPOLIA) {
+            return 0x0000000000000000000000000000000000000000; // TODO: Add USDC for Unichain Sepolia
+        }
+        if (chainId == UNICHAIN_MAINNET) {
+            return 0x0000000000000000000000000000000000000000; // TODO: Add USDC for Unichain Mainnet
+        }
+        if (chainId == ARBITRUM_MAINNET) {
+            return 0x0000000000000000000000000000000000000000; // TODO: Add USDC for Arbitrum Mainnet
         }
         if (chainId == LOCAL_ANVIL) {
             // For local testing - will be deployed or mocked
@@ -135,6 +165,15 @@ library ChainAddresses {
     function getUniversalRouter(uint256 chainId) internal pure returns (address) {
         if (chainId == ARBITRUM_SEPOLIA) {
             return 0xeFd1D4bD4cf1e86Da286BB4CB1B8BcED9C10BA47;
+        }
+        if (chainId == UNICHAIN_SEPOLIA) {
+            return 0xEf740bf23aCaE26f6492B10de645D6B98dC8Eaf3; // Unichain Sepolia UniversalRouter (checksummed)
+        }
+        if (chainId == UNICHAIN_MAINNET) {
+            return 0xEf740bf23aCaE26f6492B10de645D6B98dC8Eaf3; // Unichain Mainnet UniversalRouter (checksummed)
+        }
+        if (chainId == ARBITRUM_MAINNET) {
+            return 0xEf740bf23aCaE26f6492B10de645D6B98dC8Eaf3; // Arbitrum Mainnet UniversalRouter (checksummed)
         }
         if (chainId == LOCAL_ANVIL) {
             return address(0);

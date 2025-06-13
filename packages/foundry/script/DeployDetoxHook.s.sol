@@ -115,7 +115,7 @@ contract DeployDetoxHook is Script {
         console.log("Mining for address with correct flag bits...");
 
         // Add randomness to break deterministic pattern
-        uint256 nonce = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender, block.number))) % 10000;
+        uint256 nonce = uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender, block.number))) % 10000;
         console.log("Using random nonce for uniqueness:", nonce);
 
         // Prepare creation code with constructor arguments

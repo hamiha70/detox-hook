@@ -313,6 +313,24 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Pyth Network**: [Documentation](https://docs.pyth.network/)
 - **Foundry**: [Book](https://book.getfoundry.sh/)
 
+## Address Management in DetoxHook Deployments
+
+There are two key address management files:
+
+### 1. ChainAddresses.sol
+- **Purpose:** Provides static, hardcoded addresses for core Uniswap and Pyth contracts (e.g., PoolManager, UniversalRouter, USDC) for each supported chain.
+- **Usage:** Used by deployment scripts to look up addresses of infrastructure contracts that are not deployed by us, but are required for pool creation, swaps, etc.
+- **Source:** Addresses are taken from official Uniswap and Pyth documentation and updated as new networks are supported.
+
+### 2. DeploymentAddresses.sol
+- **Purpose:** Stores and retrieves addresses of contracts deployed by our own scripts (e.g., DetoxHook, SwapRouterFixed, pools) on a per-chain basis.
+- **Usage:** Used to pass addresses between deployment steps and scripts, and to enable modular, repeatable deployments across multiple networks.
+- **Note:** This is a utility contract, not a standalone script, and is imported by deployment scripts.
+
+**This separation ensures clarity, maintainability, and robust multi-chain deployment workflows.**
+
+For more details, see the Uniswap v4 [deployment documentation](https://docs.uniswap.org/contracts/v4/deployments).
+
 ---
 
 **🛡️ DetoxHook represents the future of fair DeFi - where MEV benefits everyone, not just the bots.**
