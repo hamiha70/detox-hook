@@ -33,7 +33,6 @@ contract ScaffoldETHDeploy is Script {
         }
         _;
         _stopBroadcast();
-        exportDeployments();
     }
 
     function _startBroadcast() internal returns (address) {
@@ -52,32 +51,6 @@ contract ScaffoldETHDeploy is Script {
 
     function _stopBroadcast() internal {
         vm.stopBroadcast();
-    }
-
-    function exportDeployments() internal {
-        // fetch already existing contracts
-        root = vm.projectRoot();
-        path = string.concat(root, "/deployments/");
-        string memory chainIdStr = vm.toString(block.chainid);
-        path = string.concat(path, string.concat(chainIdStr, ".json"));
-
-        string memory jsonWrite;
-
-        uint256 len = deployments.length;
-
-        for (uint256 i = 0; i < len; i++) {
-            vm.serializeString(jsonWrite, vm.toString(deployments[i].addr), deployments[i].name);
-        }
-
-        string memory chainName;
-
-        try this.getChain() returns (Chain memory chain) {
-            chainName = chain.name;
-        } catch {
-            chainName = findChainName();
-        }
-        jsonWrite = vm.serializeString(jsonWrite, "networkName", chainName);
-        vm.writeJson(jsonWrite, path);
     }
 
     function getChain() public returns (Chain memory) {

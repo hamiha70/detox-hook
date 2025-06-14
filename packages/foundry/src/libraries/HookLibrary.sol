@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// RULE: Never cast Uniswap V4 wrapper types (e.g., PoolId, Currency) directly to primitive types like uint256 or address. Always use the appropriate unwrap function first.
 pragma solidity ^0.8.0;
 
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";

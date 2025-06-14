@@ -877,9 +877,9 @@ class SwapRouterFrontend {
                 gasEstimate = await this.contract.estimateGas.swap(
                     swapParams.amountToSwap,
                     swapParams.zeroForOne,
-                    updateData,
-                    { from: activeWallet.address }
-                );
+                updateData,
+                { from: activeWallet.address }
+            );
             } catch (gasError) {
                 this.printColored("❌ Gas estimation failed - transaction would revert", 'red');
                 this.printColored("💡 This indicates the swap cannot be executed successfully", 'yellow');
@@ -935,9 +935,9 @@ class SwapRouterFrontend {
                 tx = await contractWithSigner.swap(
                     swapParams.amountToSwap,
                     swapParams.zeroForOne,
-                    updateData,
-                    { gasLimit: gasLimit }
-                );
+                updateData,
+                { gasLimit: gasLimit }
+            );
             } catch (txError) {
                 this.printColored("❌ Transaction submission failed", 'red');
                 this.printColored(`💡 Error: ${txError.message}`, 'yellow');
@@ -1025,9 +1025,9 @@ class SwapRouterFrontend {
             let gasEstimate;
             try {
                 gasEstimate = await this.contract.estimateGas.updatePoolConfiguration(
-                    poolKey,
-                    { from: activeWallet.address }
-                );
+                poolKey,
+                { from: activeWallet.address }
+            );
             } catch (gasError) {
                 this.printColored("❌ Gas estimation failed - transaction would revert", 'red');
                 this.printColored(`💡 Error: ${gasError.message}`, 'yellow');
@@ -1045,9 +1045,9 @@ class SwapRouterFrontend {
             let tx;
             try {
                 tx = await contractWithSigner.updatePoolConfiguration(
-                    poolKey,
-                    { gasLimit: gasLimit }
-                );
+                poolKey,
+                { gasLimit: gasLimit }
+            );
             } catch (txError) {
                 this.printColored("❌ Transaction submission failed", 'red');
                 this.printColored(`💡 Error: ${txError.message}`, 'yellow');
@@ -1554,7 +1554,7 @@ async function main() {
         
         // Only show success message if operation actually succeeded
         if (operationResult && operationResult.success !== false) {
-            console.log(chalk.green.bold("\n🎉 Operation completed successfully!"));
+        console.log(chalk.green.bold("\n🎉 Operation completed successfully!"));
         } else if (operationResult && operationResult.success === false) {
             console.log(chalk.red.bold("\n❌ Operation failed!"));
             if (operationResult.error) {

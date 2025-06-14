@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// RULE: Never cast Uniswap V4 wrapper types (e.g., PoolId, Currency) directly to primitive types like uint256 or address. Always use the appropriate unwrap function first.
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
@@ -19,13 +20,14 @@ import { ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.
 
 import { DetoxHook } from "../src/DetoxHook.sol";
 import { ChainAddresses } from "./ChainAddresses.sol";
-import { DeploymentAddresses } from "./DeploymentAddresses.sol";
 import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
+import { DevOpsTools } from "foundry-devops/src/DevOpsTools.sol";
+import { PoolParameters } from "./PoolParameters.sol";
 
 /// @title Complete DetoxHook Deployment Script
 /// @notice Comprehensive script that deploys DetoxHook, initializes pools, and adds liquidity
 /// @dev Handles balance checks, verification, funding, and pool setup with different configurations
-contract DeployDetoxHookComplete is Script, DeploymentAddresses {
+contract DeployDetoxHookComplete is Script {
     using ChainAddresses for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -82,8 +84,26 @@ contract DeployDetoxHookComplete is Script, DeploymentAddresses {
 
     /// @notice Main deployment function
     function run() external {
-        // Get deployer private key
-        uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
+        // Select deployer private key and RPC URL based on chainid
+        uint256 deployerPrivateKey;
+        string memory rpcUrl;
+        if (block.chainid == 31337) {
+            deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY_31337");
+            string memory envRpc = vm.envString("RPC_URL_31337");
+            if (bytes(envRpc).length == 0) {
+                rpcUrl = "http://localhost:8545";
+            } else {
+                rpcUrl = envRpc;
+            }
+        } else if (block.chainid == 421614) {
+            deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY_421614");
+            rpcUrl = vm.envString("RPC_URL_421614");
+        } else if (block.chainid == 1) {
+            deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY_1");
+            rpcUrl = vm.envString("RPC_URL_1");
+        } else {
+            revert("Unsupported chain");
+        }
         deployer = vm.addr(deployerPrivateKey);
         
         // Determine if we're on a fork
@@ -282,8 +302,6 @@ contract DeployDetoxHookComplete is Script, DeploymentAddresses {
         console.log("");
         
         emit DetoxHookDeployed(address(hook), salt, block.chainid);
-        // Store DetoxHook address (versioned)
-        storeAddress(DETOX_HOOK_KEY, address(hook));
     }
     
     /// @notice External wrapper for salt mining (for try-catch)
@@ -553,46 +571,27 @@ contract DeployDetoxHookComplete is Script, DeploymentAddresses {
         console.log("Currency ordering verified:", Currency.unwrap(currency0) < Currency.unwrap(currency1));
         
         // Create pool keys
-        poolKey1 = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: POOL_FEE,
-            tickSpacing: TICK_SPACING_POOL_1,
-            hooks: IHooks(address(hook))
-        });
-        
-        poolKey2 = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: POOL_FEE,
-            tickSpacing: TICK_SPACING_POOL_2,
-            hooks: IHooks(address(hook))
-        });
+        poolKey1 = PoolParameters.getPoolKey1(block.chainid, address(hook), address(usdc));
+        poolKey2 = PoolParameters.getPoolKey2(block.chainid, address(hook), address(usdc));
         
         poolId1 = poolKey1.toId();
         poolId2 = poolKey2.toId();
         
         console.log("=== Pool 1 Configuration ===");
-        console.log("PoolKey Details:");
-        console.log("  currency0:", Currency.unwrap(poolKey1.currency0));
-        console.log("  currency1:", Currency.unwrap(poolKey1.currency1));
-        console.log("  fee:", poolKey1.fee, "bps (0.05%)");
-        console.log("  tickSpacing:", poolKey1.tickSpacing);
-        console.log("  hooks:", address(poolKey1.hooks));
-        console.log("  Target Price: 2500 USDC/ETH");
-        console.log("  sqrtPriceX96:", SQRT_PRICE_2500);
-        console.log("  Pool ID:", uint256(PoolId.unwrap(poolId1)));
+        console.log("PoolKey1.currency0:", Currency.unwrap(poolKey1.currency0));
+        console.log("PoolKey1.currency1:", Currency.unwrap(poolKey1.currency1));
+        console.log("PoolKey1.fee:", poolKey1.fee);
+        console.log("PoolKey1.tickSpacing:", poolKey1.tickSpacing);
+        console.log("PoolKey1.hooks:", address(poolKey1.hooks));
+        console.log("PoolId1:", uint256(PoolId.unwrap(poolId1)));
         
         console.log("=== Pool 2 Configuration ===");
-        console.log("PoolKey Details:");
-        console.log("  currency0:", Currency.unwrap(poolKey2.currency0));
-        console.log("  currency1:", Currency.unwrap(poolKey2.currency1));
-        console.log("  fee:", poolKey2.fee, "bps (0.05%)");
-        console.log("  tickSpacing:", poolKey2.tickSpacing);
-        console.log("  hooks:", address(poolKey2.hooks));
-        console.log("  Target Price: 2600 USDC/ETH");
-        console.log("  sqrtPriceX96:", SQRT_PRICE_2600);
-        console.log("  Pool ID:", uint256(PoolId.unwrap(poolId2)));
+        console.log("PoolKey2.currency0:", Currency.unwrap(poolKey2.currency0));
+        console.log("PoolKey2.currency1:", Currency.unwrap(poolKey2.currency1));
+        console.log("PoolKey2.fee:", poolKey2.fee);
+        console.log("PoolKey2.tickSpacing:", poolKey2.tickSpacing);
+        console.log("PoolKey2.hooks:", address(poolKey2.hooks));
+        console.log("PoolId2:", uint256(PoolId.unwrap(poolId2)));
         
         // Initialize pools
         console.log("Initializing Pool 1...");
@@ -621,12 +620,6 @@ contract DeployDetoxHookComplete is Script, DeploymentAddresses {
         
         emit PoolInitialized(poolId1, SQRT_PRICE_2500, TICK_SPACING_POOL_1);
         emit PoolInitialized(poolId2, SQRT_PRICE_2600, TICK_SPACING_POOL_2);
-        // Store Pool IDs (versioned, as hex string)
-        storePoolId(POOL_1_KEY, PoolId.unwrap(poolId1));
-        storePoolId(POOL_2_KEY, PoolId.unwrap(poolId2));
-        // Store PoolKeys (versioned, as ABI-encoded bytes)
-        storePoolKey(POOL_1_KEY, abi.encode(poolKey1));
-        storePoolKey(POOL_2_KEY, abi.encode(poolKey2));
     }
     
     /// @notice Add liquidity to both pools
@@ -704,15 +697,10 @@ contract DeployDetoxHookComplete is Script, DeploymentAddresses {
         console.log("=== Step 7: Deploy SwapRouterFixed ===");
         address poolSwapTest = ChainAddresses.getPoolSwapTest(block.chainid);
         require(poolSwapTest != address(0), "PoolSwapTest address not set for this chain");
-        address detoxHook = getLatestAddress(DETOX_HOOK_KEY);
+        address detoxHook = DevOpsTools.get_most_recent_deployment("DetoxHook", block.chainid);
         require(detoxHook != address(0), "DetoxHook address not found");
-        bytes memory poolKeyEncoded = getLatestPoolKey(POOL_1_KEY);
-        require(poolKeyEncoded.length > 0, "PoolKey not found");
-        PoolKey memory poolKey = abi.decode(poolKeyEncoded, (PoolKey));
-        // Set hooks to latest DetoxHook
-        poolKey.hooks = IHooks(detoxHook);
+        PoolKey memory poolKey = PoolParameters.getPoolKey1(block.chainid, detoxHook, address(usdc));
         SwapRouterFixed swapRouterFixed = new SwapRouterFixed(poolSwapTest, poolKey);
-        storeAddress(SWAP_ROUTER_FIXED_KEY, address(swapRouterFixed));
         console.log("SwapRouterFixed deployed at:", address(swapRouterFixed));
         // Verify configuration
         PoolKey memory deployedPoolKey = swapRouterFixed.getPoolConfiguration();
