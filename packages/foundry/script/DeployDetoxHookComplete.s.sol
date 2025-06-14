@@ -16,6 +16,7 @@ import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import { IERC20Minimal } from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import { PoolModifyLiquidityTest } from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
+import { PoolSwapTest } from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import { ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import { DetoxHook } from "../src/DetoxHook.sol";
@@ -141,11 +142,16 @@ contract DeployDetoxHookComplete is Script {
         // Step 4: Fund the hook
         _fundHook();
         
-        // Step 5: Initialize pools
-        _initializePools();
-        
-        // Step 6: Add liquidity
-        _addLiquidity();
+        if (block.chainid == 31337) {
+            // On Anvil, skip pool initialization and liquidity steps
+            console.log("[SKIP/ANVIL] Skipping pool initialization and liquidity steps on Anvil (31337)");
+        } else {
+            // Step 5: Initialize pools
+            _initializePools();
+            
+            // Step 6: Add liquidity
+            _addLiquidity();
+        }
         
         // Step 7: Deploy SwapRouterFixed
         _deploySwapRouterFixed();
@@ -696,9 +702,20 @@ contract DeployDetoxHookComplete is Script {
     function _deploySwapRouterFixed() internal {
         console.log("=== Step 7: Deploy SwapRouterFixed ===");
         address poolSwapTest = ChainAddresses.getPoolSwapTest(block.chainid);
-        require(poolSwapTest != address(0), "PoolSwapTest address not set for this chain");
-        address detoxHook = DevOpsTools.get_most_recent_deployment("DetoxHook", block.chainid);
-        require(detoxHook != address(0), "DetoxHook address not found");
+        if (block.chainid == 31337 && poolSwapTest == address(0)) {
+            // Deploy PoolSwapTest for Anvil if not set
+            poolSwapTest = address(new PoolSwapTest(poolManager));
+            console.log("[ANVIL] Deployed PoolSwapTest at:", poolSwapTest);
+        } else {
+            require(poolSwapTest != address(0), "PoolSwapTest address not set for this chain");
+        }
+        address detoxHook;
+        if (block.chainid == 31337) {
+            detoxHook = address(hook); // Use in-memory deployed address
+        } else {
+            detoxHook = DevOpsTools.get_most_recent_deployment("DetoxHook", block.chainid);
+            require(detoxHook != address(0), "DetoxHook address not found");
+        }
         PoolKey memory poolKey = PoolParameters.getPoolKey1(block.chainid, detoxHook, address(usdc));
         SwapRouterFixed swapRouterFixed = new SwapRouterFixed(poolSwapTest, poolKey);
         console.log("SwapRouterFixed deployed at:", address(swapRouterFixed));

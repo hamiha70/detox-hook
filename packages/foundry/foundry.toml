@@ -20,6 +20,9 @@ runs = 1000
 
 [rpc_endpoints]
 arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
+localhost = "http://localhost:8545"
+anvil = "http://localhost:8545"
+31337 = "http://localhost:8545"
 
 [fmt]
 line_length = 120

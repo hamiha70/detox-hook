@@ -335,6 +335,27 @@ There are two key address management files:
 
 For more details, see the Uniswap v4 [deployment documentation](https://docs.uniswap.org/contracts/v4/deployments).
 
+## Local Anvil Deployment Caveats
+
+- On Anvil (chainid 31337), the deployment script will:
+  - Check deployer ETH balance (must be funded by default Anvil account)
+  - Deploy DetoxHook and fund it
+  - **Skip pool initialization and liquidity steps** (these require real contracts and tokens)
+  - Log '[SKIP/ANVIL]' for skipped steps
+- On all other chains, the script performs the full deployment flow (including pool setup and liquidity).
+
+### RPC Endpoint Note
+- Even if you have `[rpc_endpoints]` in `foundry.toml`, Foundry may not always use the correct endpoint for Anvil.
+- **Always pass `--rpc-url http://localhost:8545`** when running scripts locally to guarantee the correct connection.
+
+### Troubleshooting Local/Anvil Deployment
+- If you see a zero ETH balance for the deployer, double-check:
+  - You are running Anvil with the default mnemonic
+  - You are connecting to the correct RPC URL (`http://localhost:8545`)
+  - You are passing `--rpc-url http://localhost:8545` to your script
+- If pool or USDC addresses are zero, this is expected on Anvil and those steps are skipped.
+- For full integration tests, use a fork or testnet deployment.
+
 ---
 
 **🛡️ DetoxHook represents the future of fair DeFi - where MEV benefits everyone, not just the bots.**
