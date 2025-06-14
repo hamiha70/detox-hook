@@ -24,6 +24,8 @@ import { ChainAddresses } from "./ChainAddresses.sol";
 import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
 import { DevOpsTools } from "foundry-devops/src/DevOpsTools.sol";
 import { PoolParameters } from "./PoolParameters.sol";
+import { MockUSDC } from "./MockUSDC.sol";
+import { PoolManager } from "@uniswap/v4-core/src/PoolManager.sol";
 
 /// @title Complete DetoxHook Deployment Script
 /// @notice Comprehensive script that deploys DetoxHook, initializes pools, and adds liquidity
@@ -74,6 +76,9 @@ contract DeployDetoxHookComplete is Script {
     address public deployer;
     bool public isForked;
     
+    MockUSDC public mockUsdc;
+    PoolManager public localPoolManager;
+    
     // Events
     event DeploymentStarted(address indexed deployer, uint256 chainId, bool isForked);
     event BalanceChecked(address indexed account, uint256 ethBalance, uint256 usdcBalance, bool sufficient);
@@ -82,6 +87,11 @@ contract DeployDetoxHookComplete is Script {
     event PoolInitialized(PoolId indexed poolId, uint160 sqrtPriceX96, int24 tickSpacing);
     event LiquidityAdded(PoolId indexed poolId, uint256 usdcAmount, uint256 ethAmount);
     event DeploymentCompleted(address indexed hook, PoolId poolId1, PoolId poolId2);
+
+    // Add at the top:
+    address constant ANVIL_SWAPPER = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8; // Anvil account 1
+
+    SwapRouterFixed public swapRouterFixedInstance;
 
     /// @notice Main deployment function
     function run() external {
@@ -106,6 +116,15 @@ contract DeployDetoxHookComplete is Script {
             revert("Unsupported chain");
         }
         deployer = vm.addr(deployerPrivateKey);
+        
+        // Deploy local PoolManager and MockUSDC for Anvil
+        if (block.chainid == 31337) {
+            localPoolManager = new PoolManager(deployer);
+            require(address(localPoolManager).code.length > 0, "[INTERNAL ERROR] PoolManager not deployed");
+            mockUsdc = new MockUSDC("USD Coin", "USDC", 6);
+            require(address(mockUsdc).code.length > 0, "[INTERNAL ERROR] MockUSDC not deployed");
+            mockUsdc.mint(deployer, 1_000_000e6); // 1,000,000 USDC to deployer
+        }
         
         // Determine if we're on a fork
         isForked = _isForkedEnvironment();
@@ -142,19 +161,19 @@ contract DeployDetoxHookComplete is Script {
         // Step 4: Fund the hook
         _fundHook();
         
-        if (block.chainid == 31337) {
-            // On Anvil, skip pool initialization and liquidity steps
-            console.log("[SKIP/ANVIL] Skipping pool initialization and liquidity steps on Anvil (31337)");
-        } else {
-            // Step 5: Initialize pools
-            _initializePools();
-            
-            // Step 6: Add liquidity
-            _addLiquidity();
-        }
+        // Step 5: Initialize pools
+        _initializePools();
+        
+        // Step 6: Add liquidity
+        _addLiquidity();
         
         // Step 7: Deploy SwapRouterFixed
         _deploySwapRouterFixed();
+        
+        if (block.chainid == 31337) {
+            _setupSwapperAndTestSwap();
+            _testSwapWithoutHook();
+        }
         
         vm.stopBroadcast();
         
@@ -236,31 +255,37 @@ contract DeployDetoxHookComplete is Script {
     /// @notice Initialize contract instances
     function _initializeContracts() internal {
         console.log("=== Step 2: Initialize Contracts ===");
-        
         // Validate chain addresses
         if (block.chainid != ChainAddresses.LOCAL_ANVIL) {
             ChainAddresses.validateChainAddresses(block.chainid);
         }
-        
         // Get contract addresses
-        address poolManagerAddress = ChainAddresses.getPoolManager(block.chainid);
-        address usdcAddress = ChainAddresses.getUSDC(block.chainid);
-        
-        console.log("Pool Manager:", poolManagerAddress);
-        console.log("USDC Token:", usdcAddress);
-        
-        // Initialize contract instances
-        poolManager = IPoolManager(poolManagerAddress);
-        usdc = IERC20Minimal(usdcAddress);
-        
+        if (block.chainid == 31337) {
+            require(address(localPoolManager).code.length > 0, "[INTERNAL ERROR] PoolManager not deployed");
+            require(address(mockUsdc).code.length > 0, "[INTERNAL ERROR] MockUSDC not deployed");
+            poolManager = localPoolManager;
+            usdc = IERC20Minimal(address(mockUsdc));
+            console.log("Pool Manager:", address(localPoolManager));
+            console.log("USDC Token:", address(mockUsdc));
+        } else {
+            address poolManagerAddress = ChainAddresses.getPoolManager(block.chainid);
+            address usdcAddress = ChainAddresses.getUSDC(block.chainid);
+            require(poolManagerAddress.code.length > 0, "[ERROR] PoolManager address has no code deployed");
+            require(usdcAddress.code.length > 0, "[ERROR] USDC address has no code deployed");
+            poolManager = IPoolManager(poolManagerAddress);
+            usdc = IERC20Minimal(usdcAddress);
+            console.log("Pool Manager:", poolManagerAddress);
+            console.log("USDC Token:", usdcAddress);
+        }
         // Get PoolModifyLiquidityTest address
         address modifyLiquidityAddress = ChainAddresses.getPoolModifyLiquidityTest(block.chainid);
         if (modifyLiquidityAddress != address(0)) {
+            require(modifyLiquidityAddress.code.length > 0, "[ERROR] PoolModifyLiquidityTest address has no code deployed");
             modifyLiquidityRouter = PoolModifyLiquidityTest(modifyLiquidityAddress);
             console.log("Using existing PoolModifyLiquidityTest at:", address(modifyLiquidityRouter));
         } else {
-            // Deploy PoolModifyLiquidityTest if needed (for testing)
             modifyLiquidityRouter = new PoolModifyLiquidityTest(poolManager);
+            require(address(modifyLiquidityRouter).code.length > 0, "[INTERNAL ERROR] PoolModifyLiquidityTest not deployed");
             console.log("PoolModifyLiquidityTest deployed at:", address(modifyLiquidityRouter));
         }
     }
@@ -717,10 +742,10 @@ contract DeployDetoxHookComplete is Script {
             require(detoxHook != address(0), "DetoxHook address not found");
         }
         PoolKey memory poolKey = PoolParameters.getPoolKey1(block.chainid, detoxHook, address(usdc));
-        SwapRouterFixed swapRouterFixed = new SwapRouterFixed(poolSwapTest, poolKey);
-        console.log("SwapRouterFixed deployed at:", address(swapRouterFixed));
+        swapRouterFixedInstance = new SwapRouterFixed(poolSwapTest, poolKey);
+        console.log("SwapRouterFixed deployed at:", address(swapRouterFixedInstance));
         // Verify configuration
-        PoolKey memory deployedPoolKey = swapRouterFixed.getPoolConfiguration();
+        PoolKey memory deployedPoolKey = swapRouterFixedInstance.getPoolConfiguration();
         console.log("Verified pool configuration:");
         console.log("  Currency0:", Currency.unwrap(deployedPoolKey.currency0));
         console.log("  Currency1:", Currency.unwrap(deployedPoolKey.currency1));
@@ -774,6 +799,7 @@ contract DeployDetoxHookComplete is Script {
         console.log("Hook ETH Balance:", address(hook).balance);
         console.log("Pool Manager:", address(poolManager));
         console.log("USDC Token:", address(usdc));
+        console.log("SwapRouterFixed:", address(swapRouterFixedInstance));
         console.log("");
         
         console.log("=== Hook Configuration ===");
@@ -871,4 +897,122 @@ contract DeployDetoxHookComplete is Script {
     
     /// @notice Receive function to accept ETH
     receive() external payable {}
+
+    /// @notice Setup swapper and test swap on Anvil
+    function _setupSwapperAndTestSwap() internal {
+        console.log("=== Step 8: Swapper Setup and Test Swap (Anvil) ===");
+        // Mint USDC to swapper
+        mockUsdc.mint(ANVIL_SWAPPER, 10_000e6); // 10,000 USDC
+        console.log("Minted 10,000 USDC to swapper:", ANVIL_SWAPPER);
+        // Approve SwapRouterFixed to spend USDC from deployer (broadcasted scripts cannot use prank)
+        address swapRouterFixed = address(swapRouterFixedInstance);
+        // In broadcasted scripts, all actions must be performed by the deployer account.
+        // We cannot use vm.startPrank or impersonate other accounts.
+        // Therefore, we perform the approval and swap as the deployer.
+        mockUsdc.approve(swapRouterFixed, type(uint256).max);
+        console.log("Deployer approved SwapRouterFixed to spend USDC");
+        // Log balances before swap
+        uint256 ethBefore = deployer.balance;
+        uint256 usdcBefore = mockUsdc.balanceOf(deployer);
+        console.log("Deployer ETH before:", ethBefore);
+        console.log("Deployer USDC before:", usdcBefore);
+        // Perform a test swap (USDC -> ETH)
+        // For USDC->ETH, zeroForOne = false, amountToSwap = -1000e6 (exact input)
+        try swapRouterFixedInstance.swap(-1000e6, false, "") returns (BalanceDelta delta) {
+            console.log("Swap executed: 1000 USDC -> ETH");
+        } catch Error(string memory reason) {
+            console.log("Swap failed (string):", reason);
+        } catch Panic(uint256 code) {
+            console.log("Swap failed (panic):", code);
+        } catch (bytes memory lowLevelData) {
+            // Log the length and first 32 bytes as uint256
+            console.log("Swap failed (raw), length:", lowLevelData.length);
+            if (lowLevelData.length >= 32) {
+                uint256 firstWord;
+                assembly {
+                    firstWord := mload(add(lowLevelData, 32))
+                }
+                console.log("First 32 bytes as uint256:", firstWord);
+            }
+        }
+        // Log balances after swap
+        uint256 ethAfter = deployer.balance;
+        uint256 usdcAfter = mockUsdc.balanceOf(deployer);
+        console.log("Deployer ETH after:", ethAfter);
+        console.log("Deployer USDC after:", usdcAfter);
+    }
+
+    /// @notice Deploy a control pool (ETH/USDC) without the hook, add liquidity, and test a swap
+    function _testSwapWithoutHook() internal {
+        console.log("=== CONTROL: Deploying Pool WITHOUT Hook ===");
+        // Deploy a new PoolManager and USDC for isolation (or reuse existing localPoolManager/mockUsdc)
+        PoolManager controlPoolManager = new PoolManager(deployer);
+        require(address(controlPoolManager).code.length > 0, "[INTERNAL ERROR] Control PoolManager not deployed");
+        MockUSDC controlUsdc = new MockUSDC("USD Coin", "USDC", 6);
+        require(address(controlUsdc).code.length > 0, "[INTERNAL ERROR] Control MockUSDC not deployed");
+        controlUsdc.mint(deployer, 1_000_000e6);
+        // Create pool key (no hook)
+        PoolKey memory controlPoolKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(controlUsdc)),
+            fee: 500,
+            tickSpacing: 10,
+            hooks: IHooks(address(0))
+        });
+        // Deploy PoolModifyLiquidityTest for this pool
+        PoolModifyLiquidityTest controlModifyLiquidity = new PoolModifyLiquidityTest(controlPoolManager);
+        require(address(controlModifyLiquidity).code.length > 0, "[INTERNAL ERROR] Control PoolModifyLiquidityTest not deployed");
+        // Initialize pool at sqrtPriceX96 for 2500 (same as main pool)
+        uint160 sqrtPriceX96 = 3961408125713216879677197516800;
+        controlPoolManager.initialize(controlPoolKey, sqrtPriceX96);
+        console.log("[CONTROL] Pool initialized");
+        // Add liquidity (same as main pool)
+        controlUsdc.approve(address(controlModifyLiquidity), type(uint256).max);
+        controlModifyLiquidity.modifyLiquidity{value: 400_000_000_000_000}(
+            controlPoolKey,
+            ModifyLiquidityParams({
+                tickLower: -600,
+                tickUpper: 600,
+                liquidityDelta: 1_000_000,
+                salt: bytes32(0)
+            }),
+            ""
+        );
+        console.log("[CONTROL] Liquidity added");
+        // Deploy PoolSwapTest for this pool
+        PoolSwapTest controlPoolSwapTest = new PoolSwapTest(controlPoolManager);
+        require(address(controlPoolSwapTest).code.length > 0, "[INTERNAL ERROR] Control PoolSwapTest not deployed");
+        // Deploy SwapRouterFixed for this pool
+        SwapRouterFixed controlSwapRouter = new SwapRouterFixed(address(controlPoolSwapTest), controlPoolKey);
+        require(address(controlSwapRouter).code.length > 0, "[INTERNAL ERROR] Control SwapRouterFixed not deployed");
+        // Approve router for USDC
+        controlUsdc.approve(address(controlSwapRouter), type(uint256).max);
+        // Log balances before swap
+        uint256 ethBefore = deployer.balance;
+        uint256 usdcBefore = controlUsdc.balanceOf(deployer);
+        console.log("[CONTROL] Deployer ETH before:", ethBefore);
+        console.log("[CONTROL] Deployer USDC before:", usdcBefore);
+        // Try a swap (USDC -> ETH, no hook, so hookData is empty)
+        try controlSwapRouter.swap(-1000e6, false, "") returns (BalanceDelta delta) {
+            console.log("[CONTROL] Swap executed: 1000 USDC -> ETH");
+        } catch Error(string memory reason) {
+            console.log("[CONTROL] Swap failed (string):", reason);
+        } catch Panic(uint256 code) {
+            console.log("[CONTROL] Swap failed (panic):", code);
+        } catch (bytes memory lowLevelData) {
+            console.log("[CONTROL] Swap failed (raw), length:", lowLevelData.length);
+            if (lowLevelData.length >= 32) {
+                uint256 firstWord;
+                assembly {
+                    firstWord := mload(add(lowLevelData, 32))
+                }
+                console.log("[CONTROL] First 32 bytes as uint256:", firstWord);
+            }
+        }
+        // Log balances after swap
+        uint256 ethAfter = deployer.balance;
+        uint256 usdcAfter = controlUsdc.balanceOf(deployer);
+        console.log("[CONTROL] Deployer ETH after:", ethAfter);
+        console.log("[CONTROL] Deployer USDC after:", usdcAfter);
+    }
 } 
