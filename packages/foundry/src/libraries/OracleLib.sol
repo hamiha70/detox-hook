@@ -58,6 +58,47 @@ library OracleLib {
         (price, , valid) = getOraclePriceWithConfidence(pythOracle, priceId, stalenessThreshold);
     }
 
+    /**
+     * @notice Get a fresh oracle price using Pyth's getPriceNoOlderThan, after updatePriceFeeds. Accept priceUpdate as argument. Only use for real Pyth, fallback to getPriceUnsafe for mocks.
+     * @param pythOracle The Pyth oracle instance
+     * @param priceId The Pyth price ID for the currency
+     * @param stalenessThreshold Maximum age in seconds
+     * @param priceUpdate The price update data
+     * @return price Normalized price (PRICE_PRECISION format)
+     * @return confidence Normalized confidence (PRICE_PRECISION format)
+     * @return valid Whether the price is valid and fresh
+     */
+    function getFreshOraclePrice(
+        IPyth pythOracle,
+        bytes32 priceId,
+        uint256 stalenessThreshold,
+        bytes[] memory priceUpdate
+    ) internal returns (uint256 price, uint256 confidence, bool valid) {
+        if (address(pythOracle) == address(0) || priceId == bytes32(0)) {
+            return (0, 0, false);
+        }
+        // For real Pyth, update and then read
+        if (priceUpdate.length > 0) {
+            uint256 fee = pythOracle.getUpdateFee(priceUpdate);
+            pythOracle.updatePriceFeeds{value: fee}(priceUpdate);
+            PythStructs.Price memory pythPrice = pythOracle.getPriceNoOlderThan(priceId, stalenessThreshold);
+            valid = isPriceValid(pythPrice, stalenessThreshold);
+            if (!valid) return (0, 0, false);
+            price = normalizePythPrice(pythPrice);
+            confidence = normalizePythConfidence(pythPrice);
+            return (price, confidence, true);
+        } else {
+            // Fallback to unsafe for mocks
+            (PythStructs.Price memory pythPrice, bool success) = safePythCall(pythOracle, priceId);
+            if (!success) return (0, 0, false);
+            valid = isPriceValid(pythPrice, stalenessThreshold);
+            if (!valid) return (0, 0, false);
+            price = normalizePythPrice(pythPrice);
+            confidence = normalizePythConfidence(pythPrice);
+            return (price, confidence, true);
+        }
+    }
+
     // ============ Normalization Functions ============
 
     /**

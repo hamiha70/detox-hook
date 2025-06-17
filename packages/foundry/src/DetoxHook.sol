@@ -16,6 +16,7 @@ import { HookLibrary } from "./libraries/HookLibrary.sol";
 import { ArbitrageLib } from "./libraries/ArbitrageLib.sol";
 import { OracleLib } from "./libraries/OracleLib.sol";
 import { IERC20Minimal } from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
+import "forge-std/console.sol";
 
 contract DetoxHook is BaseHook {
     using CurrencyLibrary for Currency;
@@ -74,67 +75,158 @@ contract DetoxHook is BaseHook {
         _;
     }
 
-    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
+    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         internal
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
+        // 0. Decode priceUpdate from hookData if present
+        bytes[] memory priceUpdate;
+        if (hookData.length > 0) {
+            priceUpdate = abi.decode(hookData, (bytes[]));
+        }
         // 1. Early exit for exact output swaps - no interference
         if (params.amountSpecified >= 0) {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
-
-        // 2. Get currencies and oracle prices with confidence
+        // 2. Get currencies
         Currency inputCurrency = params.zeroForOne ? key.currency0 : key.currency1;
         Currency outputCurrency = params.zeroForOne ? key.currency1 : key.currency0;
-
-        (uint256 inputPrice, uint256 inputConf, bool inputValid) = _getOraclePriceWithConfidence(inputCurrency);
-        (uint256 outputPrice, uint256 outputConf, bool outputValid) = _getOraclePriceWithConfidence(outputCurrency);
-
-        // 3. Fallback to no interference if oracle fails
-        if (!inputValid || !outputValid) {
-            return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
+        // --- DIRECTIONALITY EXPLANATION ---
+        // For zeroForOne (ETH->USDC):
+        //   - poolPrice: USDC/ETH (how many USDC per 1 ETH)
+        //   - inputPrice: USDC/ETH (from oracle, computed as ETH/USD ÷ USDC/USD)
+        //   - outputPrice: USDC/USDC (=1, for USDC)
+        // For oneForZero (USDC->ETH):
+        //   - poolPrice: ETH/USDC (how many ETH per 1 USDC)
+        //   - inputPrice: ETH/USDC (from oracle, computed as USDC/USD ÷ ETH/USD)
+        //   - outputPrice: ETH/ETH (=1, for ETH)
+        // --- NATIVE ETH NOTE ---
+        // In Uniswap v4, Currency type abstracts both native ETH (address(0)) and ERC20. If inputCurrency or outputCurrency is address(0), it means native ETH. If not, it's an ERC20. This is important for funding and for correct price ID mapping.
+        // --- Fetch Pyth prices ---
+        // Always fetch both ETH/USD and USDC/USD
+        (uint256 ethPrice, , bool ethValid) = _getOraclePriceWithConfidence(Currency.wrap(address(0)));
+        (uint256 usdcPrice, , bool usdcValid) = _getOraclePriceWithConfidence(Currency.wrap(USDC_ON_ARBITRUM));
+        // Logging for debugging oracle validity
+        PythStructs.Price memory ethRaw = IPyth(pythOracle).getPriceUnsafe(pythPriceIds[Currency.wrap(address(0))]);
+        PythStructs.Price memory usdcRaw = IPyth(pythOracle).getPriceUnsafe(pythPriceIds[Currency.wrap(USDC_ON_ARBITRUM)]);
+        console.log("[HOOK] ETH_RAW.price:"); console.logInt(ethRaw.price);
+        console.log("[HOOK] ETH_RAW.conf:"); console.logUint(ethRaw.conf);
+        console.log("[HOOK] ETH_RAW.expo:"); console.logInt(ethRaw.expo);
+        console.log("[HOOK] ETH_RAW.publishTime:"); console.logUint(ethRaw.publishTime);
+        console.log("[HOOK] USDC_RAW.price:"); console.logInt(usdcRaw.price);
+        console.log("[HOOK] USDC_RAW.conf:"); console.logUint(usdcRaw.conf);
+        console.log("[HOOK] USDC_RAW.expo:"); console.logInt(usdcRaw.expo);
+        console.log("[HOOK] USDC_RAW.publishTime:"); console.logUint(usdcRaw.publishTime);
+        console.log("[HOOK] block.timestamp:"); console.logUint(block.timestamp);
+        console.log("[HOOK] stalenessThreshold:"); console.logUint(stalenessThreshold);
+        console.log("[HOOK] ethValid:"); console.logBool(ethValid);
+        console.log("[HOOK] usdcValid:"); console.logBool(usdcValid);
+        require(ethValid && usdcValid, "Oracle prices invalid");
+        // 2. Calculate prices for arbitrage analysis
+        // Convert to ARBITRAGE_PRECISION (18 decimals) for ArbitrageLib
+        uint256 ethPriceInArbitragePrecision = FullMath.mulDiv(ethPrice, 1e18, PRICE_PRECISION);
+        uint256 usdcPriceInArbitragePrecision = FullMath.mulDiv(usdcPrice, 1e18, PRICE_PRECISION);
+        
+        uint256 inputPrice;
+        uint256 outputPrice;
+        if (params.zeroForOne) {
+            // ETH->USDC: input is ETH, output is USDC
+            inputPrice = ethPriceInArbitragePrecision;   // ETH price in USD (18 decimals)
+            outputPrice = usdcPriceInArbitragePrecision; // USDC price in USD (18 decimals)
+        } else {
+            // USDC->ETH: input is USDC, output is ETH  
+            inputPrice = usdcPriceInArbitragePrecision;  // USDC price in USD (18 decimals)
+            outputPrice = ethPriceInArbitragePrecision;  // ETH price in USD (18 decimals)
         }
+        // Granular logging: Oracle prices and confidence
+        console.log("[HOOK] inputCurrency (should be asset IN):");
+        console.logAddress(Currency.unwrap(inputCurrency));
+        console.log("[HOOK] outputCurrency (should be asset OUT):");
+        console.logAddress(Currency.unwrap(outputCurrency));
+        console.log("[HOOK] ethPrice (ETH/USD, 8 decimals):");
+        console.logUint(ethPrice);
+        console.log("[HOOK] usdcPrice (USDC/USD, 8 decimals):");
+        console.logUint(usdcPrice);
+        console.log("[HOOK] inputPrice (normalized, e.g. USDC/ETH):");
+        console.logUint(inputPrice);
+        console.log("[HOOK] outputPrice (should be 1e8):");
+        console.logUint(outputPrice);
 
-        // 4. Get pool price and prepare arbitrage parameters
+        // 3. Get pool price and prepare arbitrage parameters
         uint256 poolPrice = _getPoolPrice(key);
         if (poolPrice == 0) {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
+        // Granular logging: Pool price
+        console.log("[HOOK] poolPrice");
+        console.logUint(poolPrice);
+        console.log("[HOOK] amountSpecified");
+        console.logInt(params.amountSpecified);
+        console.log("[HOOK] zeroForOne");
+        console.logBool(params.zeroForOne);
 
-        // 5. Use ArbitrageLib to analyze opportunity with confidence bounds
-        ArbitrageLib.ArbitrageResult memory result = ArbitrageLib.analyzeArbitrageOpportunity(
-            ArbitrageLib.ArbitrageParams({
-                poolPrice: poolPrice,
-                inputPrice: inputPrice,
-                outputPrice: outputPrice,
-                inputPriceConf: inputConf,
-                outputPriceConf: outputConf,
-                exactInputAmount: uint256(-params.amountSpecified),
-                zeroForOne: params.zeroForOne
-            }),
-            rhoBps
-        );
+        // 4. Use ArbitrageLib to analyze opportunity with confidence bounds
+        // Convert poolPrice from PRICE_PRECISION (8 decimals) to ARBITRAGE_PRECISION (18 decimals)
+        uint256 poolPriceInArbitragePrecision = FullMath.mulDiv(poolPrice, 1e18, PRICE_PRECISION);
+        
+        ArbitrageLib.ArbitrageParams memory arbParams = ArbitrageLib.ArbitrageParams({
+            poolPrice: poolPriceInArbitragePrecision,
+            inputPrice: inputPrice,
+            outputPrice: outputPrice,
+            inputPriceConf: 0, // Assuming no confidence for inputPrice
+            outputPriceConf: 0, // Assuming no confidence for outputPrice
+            exactInputAmount: uint256(-params.amountSpecified),
+            zeroForOne: params.zeroForOne
+        });
+        ArbitrageLib.ArbitrageResult memory result = ArbitrageLib.analyzeArbitrageOpportunity(arbParams, rhoBps);
+        // Granular logging: ArbitrageLib result
+        console.log("[HOOK] ArbitrageResult.arbitrageOpportunity");
+        console.logUint(result.arbitrageOpportunity);
+        console.log("[HOOK] ArbitrageResult.shouldInterfere");
+        console.logBool(result.shouldInterfere);
+        console.log("[HOOK] ArbitrageResult.hookShare");
+        console.logUint(result.hookShare);
+        console.log("[HOOK] ArbitrageResult.isOutsideConfidenceBand");
+        console.logBool(result.isOutsideConfidenceBand);
+        // Additional logging for clarity
+        console.log("[HOOK] --- Arbitrage Opportunity (input units) ---");
+        console.logUint(result.arbitrageOpportunity);
+        console.log("[HOOK] --- Hook Share (input units) ---");
+        console.logUint(result.hookShare);
 
-        // 6. Check if we should interfere (both confidence and threshold requirements)
+        // 5. Check if we should interfere (both confidence and threshold requirements)
         if (!result.shouldInterfere) {
             return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
 
-        // 7. Execute arbitrage capture
+        // 6. Execute arbitrage capture
         return _executeArbitrageCapture(key, params, result.hookShare);
     }
 
     /**
-     * @notice Get oracle price with confidence for a currency
+     * @notice Get oracle price with confidence for a currency (view-only, for use in view functions)
      * @param currency The currency to get price for
      * @return price The price in PRICE_PRECISION format
      * @return confidence The confidence in PRICE_PRECISION format
-     * @return valid Whether the price is valid and fresh
+     * @return valid Whether the price is valid
      */
     function _getOraclePriceWithConfidence(Currency currency) internal view returns (uint256 price, uint256 confidence, bool valid) {
         bytes32 priceId = pythPriceIds[currency];
         return OracleLib.getOraclePriceWithConfidence(pythOracle, priceId, stalenessThreshold);
+    }
+
+    /**
+     * @notice Get fresh oracle price with confidence (state-changing, for use in _beforeSwap)
+     * @param currency The currency to get price for
+     * @param priceUpdate The price update data
+     * @return price The price in PRICE_PRECISION format
+     * @return confidence The confidence in PRICE_PRECISION format
+     * @return valid Whether the price is valid and fresh
+     */
+    function _getFreshOraclePriceWithConfidence(Currency currency, bytes[] memory priceUpdate) internal returns (uint256 price, uint256 confidence, bool valid) {
+        bytes32 priceId = pythPriceIds[currency];
+        return OracleLib.getFreshOraclePrice(pythOracle, priceId, stalenessThreshold, priceUpdate);
     }
 
     /**
@@ -154,13 +246,18 @@ contract DetoxHook is BaseHook {
      */
     function _getPoolPrice(PoolKey memory key) internal view returns (uint256) {
         uint160 sqrtPriceX96 = HookLibrary.getPoolPrice(poolManager, key);
+        console.log("[POOL] sqrtPriceX96");
+        console.logUint(uint256(sqrtPriceX96));
         if (sqrtPriceX96 == 0) return 0;
-
         // Convert sqrtPriceX96 to currency1/currency0 price with 18 decimals
         uint256 price = HookLibrary.sqrtPriceToPrice(sqrtPriceX96);
-
+        console.log("[POOL] price");
+        console.logUint(price);
         // Normalize to PRICE_PRECISION (8 decimals)
-        return FullMath.mulDiv(price, PRICE_PRECISION, 1e18);
+        uint256 normPrice = FullMath.mulDiv(price, PRICE_PRECISION, 1e18);
+        console.log("[POOL] normPrice");
+        console.logUint(normPrice);
+        return normPrice;
     }
 
     /**
@@ -187,13 +284,26 @@ contract DetoxHook is BaseHook {
         accumulatedTokens[poolId][inputCurrency] += hookShare;
 
         // Create delta to reduce swap amount by hook's share
-        BeforeSwapDelta delta = params.zeroForOne
-            ? toBeforeSwapDelta(int128(int256(hookShare)), 0)
-            : toBeforeSwapDelta(0, int128(int256(hookShare)));
+        // hookShare is ALWAYS in first position (amountSpecified delta) regardless of direction
+        BeforeSwapDelta delta = toBeforeSwapDelta(int128(int256(hookShare)), 0);
 
         // Emit arbitrage capture event
         // Note: We don't have the full arbitrage opportunity here, so we'll emit hookShare as a proxy
         emit ArbitrageCaptured(poolId, inputCurrency, hookShare, hookShare, params.zeroForOne);
+        
+        // Logging for debugging (Forge console: max 3 params, use type-specific log functions)
+        console.log("[HOOK] beforeSwap: poolId");
+        console.logBytes32(PoolId.unwrap(poolId));
+        console.log("[HOOK] inputCurrency");
+        console.logAddress(Currency.unwrap(inputCurrency));
+        console.log("[HOOK] amountSpecified");
+        console.logInt(params.amountSpecified);
+        console.log("[HOOK] accumulatedTokens after update:");
+        console.logUint(accumulatedTokens[poolId][inputCurrency]);
+
+        // Additional logging for what is actually captured
+        console.log("[HOOK] --- Captured by Hook (input units) ---");
+        console.logUint(hookShare);
 
         return (BaseHook.beforeSwap.selector, delta, 0);
     }
@@ -253,6 +363,14 @@ contract DetoxHook is BaseHook {
         // Transfer ETH to recipient
         recipient.transfer(amount);
         
+        // Logging for debugging (Forge console: max 3 params, use type-specific log functions)
+        console.log("[HOOK] Withdrawn (ETH)");
+        console.logBytes32(PoolId.unwrap(poolId));
+        console.logUint(amount);
+        console.logAddress(recipient);
+        console.log("[HOOK] accumulatedTokens after withdraw:");
+        console.logUint(accumulatedTokens[poolId][ethCurrency]);
+        
         emit ETHWithdrawn(poolId, amount, recipient);
     }
 
@@ -281,6 +399,15 @@ contract DetoxHook is BaseHook {
         
         // Transfer ERC20 tokens to recipient
         IERC20Minimal(Currency.unwrap(currency)).transfer(recipient, amount);
+        
+        // Logging for debugging (Forge console: max 3 params, use type-specific log functions)
+        console.log("[HOOK] Withdrawn (ERC20)");
+        console.logBytes32(PoolId.unwrap(poolId));
+        console.logAddress(Currency.unwrap(currency));
+        console.logUint(amount);
+        console.logAddress(recipient);
+        console.log("[HOOK] accumulatedTokens after withdraw:");
+        console.logUint(accumulatedTokens[poolId][currency]);
         
         emit ERC20Withdrawn(poolId, currency, amount, recipient);
     }

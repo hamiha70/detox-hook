@@ -100,14 +100,14 @@ contract DetoxHookWave2Test is Test, Deployers {
             int64(int256(ETH_PRICE_BASE * 1e6)), 
             uint64(2 * 1e6), // $2 confidence for ETH
             -8, 
-            block.timestamp
+            uint64(block.timestamp)
         );
         mockOracle.updatePriceFeeds(
             USDC_USD_PRICE_ID, 
             int64(int256(USDC_PRICE_BASE * 1e6)), 
             uint64(1e4), // $0.01 confidence for USDC
             -8, 
-            block.timestamp
+            uint64(block.timestamp)
         );
     }
 
@@ -118,7 +118,7 @@ contract DetoxHookWave2Test is Test, Deployers {
             int64(int256(priceUSD * 1e6)), 
             uint64(2 * 1e6), // $2 confidence
             -8, 
-            block.timestamp
+            uint64(block.timestamp)
         );
     }
 
@@ -129,7 +129,7 @@ contract DetoxHookWave2Test is Test, Deployers {
             int64(int256(priceUSD * 1e6)), 
             uint64(1e4), // $0.01 confidence
             -8, 
-            block.timestamp
+            uint64(block.timestamp)
         );
     }
 

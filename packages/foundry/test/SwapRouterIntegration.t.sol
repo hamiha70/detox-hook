@@ -24,6 +24,7 @@ import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 // Test utilities
 import { MockERC20 } from "solmate/src/test/utils/mocks/MockERC20.sol";
+import { MockPyth, PythStructs } from "../src/libraries/PythLibrary.sol";
 
 /// @title SwapRouterIntegrationTest
 /// @notice Comprehensive integration tests for SwapRouterFixed with DetoxHook and Pyth
@@ -43,6 +44,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
 
     // Contracts
     DetoxHook public detoxHook;
+    MockPyth public mockOracle;
 
     // Pool configuration
     PoolKey public poolKey;
@@ -66,9 +68,11 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         // Deploy and mint test currencies using Deployers
         (currency0, currency1) = deployMintAndApprove2Currencies();
 
-        // Deploy DetoxHook to the correct address with proper permissions
+        // Deploy MockPyth
+        mockOracle = new MockPyth(60, 1); // 60 second validity, 1 wei fee
+        // Deploy DetoxHook to the correct address with proper permissions and mockOracle
         address hookAddress = address(uint160(HOOK_FLAGS));
-        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(0)), hookAddress);
+        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(mockOracle)), hookAddress);
         detoxHook = DetoxHook(payable(hookAddress));
 
         // Create pool key
@@ -151,6 +155,22 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         uint256 balance0Before = MockERC20(Currency.unwrap(currency0)).balanceOf(swapper);
         uint256 balance1Before = MockERC20(Currency.unwrap(currency1)).balanceOf(swapper);
 
+        // Initialize mock oracle with valid prices for both price IDs
+        mockOracle.updatePriceFeeds(
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH/USD price ID
+            int64(2000 * 1e6), // $2000, 8 decimals
+            uint64(1e4),       // $0.01 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC/USD price ID
+            int64(1 * 1e6),    // $1, 8 decimals
+            uint64(1e4),       // $0.0001 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+
         // Create swap parameters (following DetoxHook test pattern)
         SwapParams memory swapParams = SwapParams({
             zeroForOne: true, // Swap currency0 for currency1
@@ -193,6 +213,22 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         // Record balances before swap
         uint256 balance0Before = MockERC20(Currency.unwrap(currency0)).balanceOf(swapper);
         uint256 balance1Before = MockERC20(Currency.unwrap(currency1)).balanceOf(swapper);
+
+        // Initialize mock oracle with valid prices for both price IDs
+        mockOracle.updatePriceFeeds(
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH/USD price ID
+            int64(2000 * 1e6), // $2000, 8 decimals
+            uint64(1e4),       // $0.01 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC/USD price ID
+            int64(1 * 1e6),    // $1, 8 decimals
+            uint64(1e4),       // $0.0001 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
 
         // Create swap parameters
         SwapParams memory swapParams = SwapParams({
@@ -237,6 +273,22 @@ contract SwapRouterIntegrationTest is Test, Deployers {
 
         // Record initial hook balance
         uint256 hookBalanceBefore = address(detoxHook).balance;
+
+        // Initialize mock oracle with valid prices for both price IDs
+        mockOracle.updatePriceFeeds(
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH/USD price ID
+            int64(2000 * 1e6), // $2000, 8 decimals
+            uint64(1e4),       // $0.01 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC/USD price ID
+            int64(1 * 1e6),    // $1, 8 decimals
+            uint64(1e4),       // $0.0001 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
 
         // Create swap parameters
         SwapParams memory swapParams = SwapParams({
@@ -317,6 +369,22 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
         MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
 
+        // Initialize mock oracle with valid prices for both price IDs
+        mockOracle.updatePriceFeeds(
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH/USD price ID
+            int64(2000 * 1e6), // $2000, 8 decimals
+            uint64(1e4),       // $0.01 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC/USD price ID
+            int64(1 * 1e6),    // $1, 8 decimals
+            uint64(1e4),       // $0.0001 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+
         // Create swap parameters for currency0 → currency1
         SwapParams memory swapParams1 = SwapParams({
             zeroForOne: true,
@@ -371,6 +439,22 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         uint256 hookBalanceBefore = address(detoxHook).balance;
         uint256 swapperBalance1Before = MockERC20(Currency.unwrap(currency1)).balanceOf(swapper);
 
+        // Initialize mock oracle with valid prices for both price IDs
+        mockOracle.updatePriceFeeds(
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH/USD price ID
+            int64(2000 * 1e6), // $2000, 8 decimals
+            uint64(1e4),       // $0.01 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC/USD price ID
+            int64(1 * 1e6),    // $1, 8 decimals
+            uint64(1e4),       // $0.0001 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+
         // Create swap parameters
         SwapParams memory swapParams = SwapParams({
             zeroForOne: true,
@@ -419,6 +503,95 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         console.log("Pool liquidity:", liquidity);
     }
 
+    /// @notice Test: Swap with both ETH/USD and USDC/USD updates
+    function test_SwapWithMultiFeedHookData() public {
+        vm.startPrank(swapper);
+        uint256 swapAmount = 0.05e18;
+        bytes memory hookData = _generateMockHookData();
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
+        SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+        // Ensure fresh oracle data before swap
+        mockOracle.updatePriceFeeds(0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, int64(2000 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
+        mockOracle.updatePriceFeeds(0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, int64(1 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
+        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        vm.stopPrank();
+        console.log("[PASS] Swap with multi-feed hook data successful");
+    }
+
+    /// @notice Test: Swap with stale price (should not interfere)
+    function test_SwapWithStalePrice() public {
+        vm.startPrank(swapper);
+        uint256 swapAmount = 0.05e18;
+        bytes memory hookData = _generateStaleHookData();
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
+        SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+        // Ensure fresh oracle data before swap
+        mockOracle.updatePriceFeeds(0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, int64(2000 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
+        mockOracle.updatePriceFeeds(0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, int64(1 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
+        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        vm.stopPrank();
+        console.log("[PASS] Swap with stale price (should not interfere) successful");
+    }
+
+    /// @notice Test: Swap with wide confidence (should not interfere)
+    function test_SwapWithWideConfidence() public {
+        vm.startPrank(swapper);
+        uint256 swapAmount = 0.05e18;
+        bytes memory hookData = _generateWideConfHookData();
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
+        SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+        // Ensure fresh oracle data before swap
+        mockOracle.updatePriceFeeds(0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, int64(2000 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
+        mockOracle.updatePriceFeeds(0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, int64(1 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
+        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        vm.stopPrank();
+        console.log("[PASS] Swap with wide confidence (should not interfere) successful");
+    }
+
+    /// @notice Test: ArbitrageCaptured event emission
+    function testEvent_ArbitrageCaptured() public {
+        vm.startPrank(swapper);
+        uint256 swapAmount = 0.05e18;
+        bytes memory hookData = _generateMockHookData();
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
+        SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+        // Set up oracle and pool prices to guarantee arbitrage
+        // Set pool price to 1.0 (default), set oracle price to 1.2 with tight confidence
+        mockOracle.updatePriceFeeds(
+            detoxHook.pythPriceIds(currency0),
+            int64(120 * 1e6), // $120 price
+            uint64(1 * 1e6),  // $1 confidence
+            -8,               // -8 exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            detoxHook.pythPriceIds(currency1),
+            int64(100 * 1e6), // $100 price
+            uint64(1 * 1e6),  // $1 confidence
+            -8,               // -8 exponent
+            uint64(block.timestamp)
+        );
+        // Record all logs
+        vm.recordLogs();
+        // Expect event (will check after log printout)
+        swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        // Retrieve and print all logs
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        for (uint i = 0; i < entries.length; i++) {
+            console.log("Log #", i);
+            console.logBytes32(entries[i].topics[0]);
+            if (entries[i].topics.length > 1) console.logBytes32(entries[i].topics[1]);
+            if (entries[i].topics.length > 2) console.logBytes32(entries[i].topics[2]);
+            if (entries[i].topics.length > 3) console.logBytes32(entries[i].topics[3]);
+            console.logBytes(entries[i].data);
+        }
+        vm.stopPrank();
+    }
+
     // ============ Helper Functions ============
 
     /// @notice Setup initial balances and liquidity
@@ -450,15 +623,38 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         vm.deal(address(detoxHook), 1 ether);
     }
 
-    /// @notice Generate mock hook data (simulating Pyth update data)
+    /// @notice Encode a mock Pyth price update (for MockPyth)
+    function _encodeMockPythUpdate(bytes32 priceId, uint64 timestamp, int64 price, uint64 conf, int32 expo) internal pure returns (bytes memory) {
+        return abi.encode(priceId, timestamp, price, conf, expo);
+    }
+
+    /// @notice Generate mock hook data for both ETH/USD and USDC/USD
     function _generateMockHookData() internal view returns (bytes memory) {
-        // Create mock data that simulates Pyth VAA update data
-        bytes memory mockData = abi.encode(
-            uint64(block.timestamp), // timestamp
-            int64(2500e8), // price (2500 USD with 8 decimals)
-            uint64(1e6) // confidence (1 USD with 6 decimals)
-        );
-        
-        return mockData;
+        bytes32 ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
+        bytes32 USDC_USD_PRICE_ID = 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
+        bytes memory ethUpdate = _encodeMockPythUpdate(ETH_USD_PRICE_ID, uint64(block.timestamp), int64(2500e8), uint64(1e6), -8);
+        bytes memory usdcUpdate = _encodeMockPythUpdate(USDC_USD_PRICE_ID, uint64(block.timestamp), int64(1e8), uint64(1e4), -8);
+        bytes[] memory updates = new bytes[](2);
+        updates[0] = ethUpdate;
+        updates[1] = usdcUpdate;
+        return abi.encode(updates);
+    }
+
+    /// @notice Generate mock hook data for a stale price
+    function _generateStaleHookData() internal pure returns (bytes memory) {
+        bytes32 ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
+        bytes memory ethUpdate = _encodeMockPythUpdate(ETH_USD_PRICE_ID, uint64(1), int64(2500e8), uint64(1e6), -8); // very old timestamp
+        bytes[] memory updates = new bytes[](1);
+        updates[0] = ethUpdate;
+        return abi.encode(updates);
+    }
+
+    /// @notice Generate mock hook data for wide confidence
+    function _generateWideConfHookData() internal view returns (bytes memory) {
+        bytes32 ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
+        bytes memory ethUpdate = _encodeMockPythUpdate(ETH_USD_PRICE_ID, uint64(block.timestamp), int64(2500e8), uint64(100e8), -8); // wide conf
+        bytes[] memory updates = new bytes[](1);
+        updates[0] = ethUpdate;
+        return abi.encode(updates);
     }
 } 

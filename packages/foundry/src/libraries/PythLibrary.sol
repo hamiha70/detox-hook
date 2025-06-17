@@ -32,6 +32,9 @@ interface IPyth {
      * @return price The price data
      */
     function getPriceUnsafe(bytes32 id) external view returns (PythStructs.Price memory price);
+    function getUpdateFee(bytes[] calldata updateData) external view returns (uint256);
+    function updatePriceFeeds(bytes[] calldata updateData) external payable;
+    function getPriceNoOlderThan(bytes32 id, uint age) external view returns (PythStructs.Price memory);
 }
 
 /**
@@ -88,5 +91,36 @@ contract MockPyth is IPyth {
             expo: expo,
             publishTime: block.timestamp
         });
+    }
+
+    // Implement new IPyth interface functions for testing
+    function getUpdateFee(bytes[] calldata updates) external view returns (uint256) {
+        return singleUpdateFeeInWei * updates.length;
+    }
+    function updatePriceFeeds(bytes[] calldata updates) external payable {
+        uint256 requiredFee = singleUpdateFeeInWei * updates.length;
+        require(msg.value >= requiredFee, "MockPyth: insufficient fee");
+        for (uint i = 0; i < updates.length; i++) {
+            // Try/catch to revert with a clear error if decode fails
+            try this._decodeAndUpdate(updates[i]) {
+                // success
+            } catch {
+                revert("MockPyth: invalid update encoding");
+            }
+        }
+    }
+    // Internal helper for decoding and updating (for try/catch)
+    function _decodeAndUpdate(bytes calldata update) external {
+        require(msg.sender == address(this), "MockPyth: only self-call");
+        (bytes32 priceId, uint64 timestamp, int64 price, uint64 conf, int32 expo) = abi.decode(update, (bytes32, uint64, int64, uint64, int32));
+        prices[priceId] = PythStructs.Price({
+            price: price,
+            conf: conf,
+            expo: expo,
+            publishTime: timestamp
+        });
+    }
+    function getPriceNoOlderThan(bytes32 id, uint) external view returns (PythStructs.Price memory) {
+        return this.getPriceUnsafe(id);
     }
 } 

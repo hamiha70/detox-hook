@@ -20,6 +20,7 @@ import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiqui
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {HookMiner} from "@v4-periphery/src/utils/HookMiner.sol";
+import {MockPyth} from "../src/libraries/PythLibrary.sol";
 
 /**
  * @title DetoxHookLocal
@@ -41,6 +42,8 @@ contract DetoxHookLocal is Test, Deployers {
     // Test users
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
+    
+    MockPyth mockOracle;
     
     function setUp() public {
         // Deploy the V4 ecosystem locally
@@ -104,6 +107,22 @@ contract DetoxHookLocal is Test, Deployers {
                 salt: bytes32(0)
             }),
             ZERO_BYTES
+        );
+        
+        // Initialize mock oracle with valid prices for both price IDs
+        mockOracle.updatePriceFeeds(
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH/USD price ID
+            int64(2000 * 1e6), // $2000, 8 decimals
+            uint64(1e4),       // $0.01 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC/USD price ID
+            int64(1 * 1e6),    // $1, 8 decimals
+            uint64(1e4),       // $0.0001 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
         );
         
         console.log("=== Local Test Setup Complete ===");
@@ -227,6 +246,22 @@ contract DetoxHookLocal is Test, Deployers {
         
         console.log("Alice Token0 before swap:", aliceToken0Before);
         console.log("Alice Token1 before swap:", aliceToken1Before);
+        
+        // Initialize mock oracle with valid prices for both price IDs
+        mockOracle.updatePriceFeeds(
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH/USD price ID
+            int64(2000 * 1e6), // $2000, 8 decimals
+            uint64(1e4),       // $0.01 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
+        mockOracle.updatePriceFeeds(
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC/USD price ID
+            int64(1 * 1e6),    // $1, 8 decimals
+            uint64(1e4),       // $0.0001 confidence
+            -8,                // exponent
+            uint64(block.timestamp)
+        );
         
         // Perform a swap
         vm.prank(alice);

@@ -18,6 +18,7 @@ import { SwapParams, ModifyLiquidityParams } from "@uniswap/v4-core/src/types/Po
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import { MockPyth, PythStructs } from "../src/libraries/PythLibrary.sol";
+import { MockERC20 } from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 contract DetoxHookWave1Test is Test, Deployers {
     using PoolIdLibrary for PoolId;
@@ -73,6 +74,12 @@ contract DetoxHookWave1Test is Test, Deployers {
         // Approve tokens for swap router
         IERC20Minimal(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
         IERC20Minimal(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+
+        // Set correct price IDs for the hook
+        vm.prank(owner);
+        hook.setPriceId(currency0, ETH_USD_PRICE_ID);
+        vm.prank(owner);
+        hook.setPriceId(currency1, USDC_USD_PRICE_ID);
     }
 
     // ============ Wave 1 Tests: Core Infrastructure & Oracle Integration ============
@@ -175,7 +182,7 @@ contract DetoxHookWave1Test is Test, Deployers {
             int64(200 * 1e6), // $200 price
             uint64(1 * 1e6),  // $1 confidence
             -8,               // -8 exponent
-            block.timestamp
+            uint64(block.timestamp)
         );
         
         (uint256 price, bool valid, uint256 publishTime) = hook.getOraclePrice(currency0);
@@ -241,6 +248,10 @@ contract DetoxHookWave1Test is Test, Deployers {
         uint256 userBalance1Before = IERC20Minimal(Currency.unwrap(currency1)).balanceOf(address(this));
 
         uint256 exactInputAmount = 0.1 ether;
+
+        // Ensure fresh oracle data before swap
+        mockOracle.updatePriceFeeds(0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, int64(2000 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
+        mockOracle.updatePriceFeeds(0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, int64(1 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
 
         // Perform exact input swap (negative amountSpecified)
         swapRouter.swap(
@@ -334,5 +345,239 @@ contract DetoxHookWave1Test is Test, Deployers {
         payable(address(hook)).transfer(1 ether);
         uint256 balanceAfter = address(hook).balance;
         assertEq(balanceAfter - balanceBefore, 1 ether, "Contract should be able to receive ETH");
+    }
+
+    function testEvent_ParametersUpdated() public {
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, false);
+        emit DetoxHook.ParametersUpdated(8000, 0, 60, 0);
+        hook.updateParameters(7000, 120);
+    }
+
+    function testEvent_PriceIdUpdated() public {
+        bytes32 newPriceId = bytes32(uint256(0x123456));
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, false);
+        emit DetoxHook.PriceIdUpdated(currency0, 0, 0);
+        hook.setPriceId(currency0, newPriceId);
+    }
+
+    function testEvent_ETHWithdrawn() public {
+        // Use correct price IDs
+        bytes32 ethPriceId = ETH_USD_PRICE_ID;
+        bytes32 usdcPriceId = USDC_USD_PRICE_ID;
+        int64 ethPrice = int64(120 * 1e6); // $120
+        int64 usdcPrice = int64(100 * 1e6); // $100
+        uint64 conf = uint64(1 * 1e6); // $1 confidence
+        int32 expo = -8;
+        uint64 nowTs = uint64(block.timestamp);
+        mockOracle.updatePriceFeeds(ethPriceId, ethPrice, conf, expo, nowTs);
+        mockOracle.updatePriceFeeds(usdcPriceId, usdcPrice, conf, expo, nowTs);
+
+        // If your hook accumulates ETH via swap, simulate that here. Otherwise, skip this test.
+        // For now, just fund the contract with ETH for withdrawal test.
+        payable(address(hook)).transfer(1 ether);
+
+        // Step 2: Withdraw ETH and check event
+        uint256 before = hook.getAccumulatedTokens(poolId, Currency.wrap(address(0)));
+        console.log("accumulatedTokens before withdraw:", before);
+        vm.prank(owner);
+        vm.expectEmit(true, false, true, false);
+        emit DetoxHook.ETHWithdrawn(poolId, 1 ether, owner);
+        hook.withdrawAccumulatedETH(poolId, 1 ether, payable(owner));
+        uint256 afterVal = hook.getAccumulatedTokens(poolId, Currency.wrap(address(0)));
+        console.log("accumulatedTokens after withdraw:", afterVal);
+    }
+
+    function testEvent_ERC20Withdrawn() public {
+        // Step 1: Accumulate ERC20 via a real arbitrage event (swap)
+        // Use correct price IDs
+        bytes32 ethPriceId = ETH_USD_PRICE_ID;
+        bytes32 usdcPriceId = USDC_USD_PRICE_ID;
+        int64 ethPrice = int64(120 * 1e6); // $120
+        int64 usdcPrice = int64(100 * 1e6); // $100
+        uint64 conf = uint64(1 * 1e6); // $1 confidence
+        int32 expo = -8;
+        uint64 nowTs = uint64(block.timestamp);
+        mockOracle.updatePriceFeeds(ethPriceId, ethPrice, conf, expo, nowTs);
+        mockOracle.updatePriceFeeds(usdcPriceId, usdcPrice, conf, expo, nowTs);
+
+        uint256 swapAmount = 0.05e18;
+        bytes memory hookData = _generateMockHookData();
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
+        SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+
+        // Record initial accumulated tokens
+        uint256 before = hook.getAccumulatedTokens(poolId, currency0);
+        console.log("accumulatedTokens before swap:", before);
+
+        // Execute swap to trigger arbitrage capture
+        swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+
+        // Check accumulatedTokens increased
+        uint256 afterSwap = hook.getAccumulatedTokens(poolId, currency0);
+        console.log("accumulatedTokens after swap:", afterSwap);
+        assertGt(afterSwap, before, "Arbitrage should be captured");
+
+        // Step 2: Withdraw part of the accumulated tokens and check event
+        uint256 withdrawAmount = afterSwap / 2;
+        vm.prank(owner);
+        vm.expectEmit(true, true, false, false);
+        emit DetoxHook.ERC20Withdrawn(poolId, currency0, withdrawAmount, owner);
+        hook.withdrawAccumulatedERC20(poolId, currency0, withdrawAmount, owner);
+        uint256 afterWithdraw = hook.getAccumulatedTokens(poolId, currency0);
+        console.log("accumulatedTokens after withdraw:", afterWithdraw);
+        assertEq(afterWithdraw, afterSwap - withdrawAmount, "Withdraw should reduce accumulatedTokens");
+    }
+
+    function test_ArbitrageCaptureAndWithdraw() public {
+        // Set up the oracle prices to guarantee an arbitrage opportunity
+        bytes32 ethPriceId = ETH_USD_PRICE_ID;
+        bytes32 usdcPriceId = USDC_USD_PRICE_ID;
+        int64 ethPrice = int64(120 * 1e6); // $120
+        int64 usdcPrice = int64(100 * 1e6); // $100
+        uint64 conf = uint64(1 * 1e6); // $1 confidence
+        int32 expo = -8;
+        uint64 nowTs = uint64(block.timestamp);
+        mockOracle.updatePriceFeeds(ethPriceId, ethPrice, conf, expo, nowTs);
+        mockOracle.updatePriceFeeds(usdcPriceId, usdcPrice, conf, expo, nowTs);
+
+        // Prepare swap
+        uint256 swapAmount = 0.05e18;
+        bytes memory hookData = _generateMockHookData();
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
+        SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+
+        // Record initial accumulated tokens
+        uint256 before = hook.getAccumulatedTokens(poolId, currency0);
+        console.log("accumulatedTokens before swap:", before);
+
+        // Expect ArbitrageCaptured event
+        vm.expectEmit(true, true, false, false);
+        emit DetoxHook.ArbitrageCaptured(poolId, currency0, 0, 0, true); // Only indexed fields checked
+
+        // Execute swap to trigger arbitrage capture
+        swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+
+        // Check accumulatedTokens increased
+        uint256 afterSwap = hook.getAccumulatedTokens(poolId, currency0);
+        console.log("accumulatedTokens after swap:", afterSwap);
+        assertGt(afterSwap, before, "Arbitrage should be captured");
+
+        // Withdraw part of the accumulated tokens
+        uint256 withdrawAmount = afterSwap / 2;
+        vm.prank(owner);
+        vm.expectEmit(true, true, false, false);
+        emit DetoxHook.ERC20Withdrawn(poolId, currency0, withdrawAmount, owner);
+        hook.withdrawAccumulatedERC20(poolId, currency0, withdrawAmount, owner);
+
+        // Check accumulatedTokens reduced
+        uint256 afterWithdraw = hook.getAccumulatedTokens(poolId, currency0);
+        console.log("accumulatedTokens after withdraw:", afterWithdraw);
+        assertEq(afterWithdraw, afterSwap - withdrawAmount, "Withdraw should reduce accumulatedTokens");
+    }
+
+    function testEvent_ETHArbitrageAndWithdraw_NewPool() public {
+        // Create a new pool with different tickSpacing to avoid clashing with the main pool
+        int24 tickSpacing = 120;
+        // Set tick for ~3000 USDC/ETH (ETH 18 decimals, USDC 6)
+        // Uniswap tick formula: price = 1.0001^tick, so tick = log(price) / log(1.0001)
+        // log(3000) / log(1.0001) ≈ 26214
+        int24 highTick = 26280; // ~3000 USDC/ETH
+        int24 tickLower = highTick - tickSpacing; 
+        int24 tickUpper = highTick + tickSpacing; 
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(highTick);
+        PoolKey memory newPoolKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 3000,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(hook))
+        });
+        PoolId newPoolId = newPoolKey.toId();
+        manager.initialize(newPoolKey, sqrtPriceX96);
+
+        // Set correct Pyth price IDs and update oracle
+        int64 ethPrice = int64(2000 * 1e6); // $2000
+        int64 usdcPrice = int64(1 * 1e6);   // $1
+        uint64 conf = uint64(1 * 1e6);      // $1 confidence
+        int32 expo = -8;
+        uint64 nowTs = uint64(block.timestamp);
+        mockOracle.updatePriceFeeds(ETH_USD_PRICE_ID, ethPrice, conf, expo, nowTs);
+        mockOracle.updatePriceFeeds(USDC_USD_PRICE_ID, usdcPrice, conf, expo, nowTs);
+        // --- DIRECTIONALITY EXPLANATION ---
+        // For zeroForOne (ETH->USDC):
+        //   - poolPrice: USDC/ETH (how many USDC per 1 ETH)
+        //   - inputPrice: USDC/ETH (from oracle, ETH price in USDC)
+        //   - outputPrice: USDC/USDC (=1, for USDC)
+        // For oneForZero (USDC->ETH):
+        //   - poolPrice: ETH/USDC (how many ETH per 1 USDC)
+        //   - inputPrice: ETH/USDC (from oracle, USDC price in ETH)
+        //   - outputPrice: ETH/ETH (=1, for ETH)
+        // ... existing code ...
+
+        // Mint tokens to this contract for liquidity provision
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), 10000e18);
+        MockERC20(Currency.unwrap(currency1)).mint(address(this), 10000e18);
+        // Approve the router to spend both tokens
+        MockERC20(Currency.unwrap(currency0)).approve(address(modifyLiquidityRouter), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(modifyLiquidityRouter), type(uint256).max);
+        // Add liquidity to the new pool
+        ModifyLiquidityParams memory liquidityParams = ModifyLiquidityParams({
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            liquidityDelta: 10000e18,
+            salt: bytes32(uint256(2))
+        });
+        modifyLiquidityRouter.modifyLiquidity(newPoolKey, liquidityParams, "");
+
+        // Fund the hook contract with ETH to pay for Pyth oracle calls
+        payable(address(hook)).transfer(1 ether);
+
+        // Perform zeroForOne exact input swap (ETH -> USDC)
+        uint256 swapAmount = 0.0001e18; // much smaller swap to avoid overflow/underflow
+        bytes memory hookData = _generateMockHookData();
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
+        SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+
+        // Record initial accumulated ETH
+        uint256 before = hook.getAccumulatedTokens(newPoolId, Currency.wrap(address(0)));
+        console.log("accumulatedTokens (ETH) before swap:", before);
+
+        // Execute swap to trigger ETH arbitrage capture
+        swapRouter.swap(newPoolKey, swapParams, testSettings, hookData);
+
+        // Check accumulatedTokens (ETH) increased
+        uint256 afterSwap = hook.getAccumulatedTokens(newPoolId, Currency.wrap(address(0)));
+        console.log("accumulatedTokens (ETH) after swap:", afterSwap);
+        assertGt(afterSwap, before, "ETH arbitrage should be captured");
+
+        // Withdraw the accumulated ETH and check event
+        uint256 withdrawAmount = afterSwap;
+        vm.prank(owner);
+        vm.expectEmit(true, false, true, false);
+        emit DetoxHook.ETHWithdrawn(newPoolId, withdrawAmount, owner);
+        hook.withdrawAccumulatedETH(newPoolId, withdrawAmount, payable(owner));
+        uint256 afterWithdraw = hook.getAccumulatedTokens(newPoolId, Currency.wrap(address(0)));
+        console.log("accumulatedTokens (ETH) after withdraw:", afterWithdraw);
+        assertEq(afterWithdraw, 0, "Withdraw should reduce accumulated ETH to zero");
+    }
+
+    function _encodeMockPythUpdate(bytes32 priceId, uint64 timestamp, int64 price, uint64 conf, int32 expo) internal pure returns (bytes memory) {
+        return abi.encode(priceId, timestamp, price, conf, expo);
+    }
+
+    function _generateMockHookData() internal view returns (bytes memory) {
+        bytes32 ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
+        bytes32 USDC_USD_PRICE_ID = 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
+        bytes memory ethUpdate = _encodeMockPythUpdate(ETH_USD_PRICE_ID, uint64(block.timestamp), int64(2500e8), uint64(1e6), -8);
+        bytes memory usdcUpdate = _encodeMockPythUpdate(USDC_USD_PRICE_ID, uint64(block.timestamp), int64(1e8), uint64(1e4), -8);
+        bytes[] memory updates = new bytes[](2);
+        updates[0] = ethUpdate;
+        updates[1] = usdcUpdate;
+        return abi.encode(updates);
     }
 } 

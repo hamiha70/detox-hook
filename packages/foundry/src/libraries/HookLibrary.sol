@@ -11,6 +11,7 @@ import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { SqrtPriceMath } from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { BeforeSwapDelta, toBeforeSwapDelta } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import { console } from "forge-std/console.sol";
 
 /// @title HookLibrary
 /// @notice Helper functions for Uniswap V4 hook development
@@ -75,8 +76,12 @@ library HookLibrary {
     function sqrtPriceToPrice(uint160 sqrtPriceX96) internal pure returns (uint256 price) {
         // Price = (sqrtPriceX96 / 2^96)^2
         // Multiply by 10^18 for 18 decimal precision
+        console.log("[SQRT2PRICE] sqrtPriceX96");
+        console.logUint(uint256(sqrtPriceX96));
         uint256 priceX192 = uint256(sqrtPriceX96) * sqrtPriceX96;
         price = (priceX192 * 1e18) >> 192; // Divide by 2^192 and multiply by 10^18
+        console.log("[SQRT2PRICE] price");
+        console.logUint(price);
     }
 
     /// @notice Convert human-readable price to sqrt price
