@@ -4,7 +4,8 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import { OracleLib } from "../src/libraries/OracleLib.sol";
-import { IPyth, PythStructs, MockPyth } from "../src/libraries/PythLibrary.sol";
+import { IPyth, PythStructs } from "../src/libraries/PythLibrary.sol";
+import { MockPyth } from "../src/libraries/PythMock.sol";
 
 contract OracleLibTest is Test {
     MockPyth public mockPyth;

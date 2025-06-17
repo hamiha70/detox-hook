@@ -24,7 +24,8 @@ import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 // Test utilities
 import { MockERC20 } from "solmate/src/test/utils/mocks/MockERC20.sol";
-import { MockPyth, PythStructs } from "../src/libraries/PythLibrary.sol";
+import { MockPyth } from "../src/libraries/PythMock.sol";
+import { PythStructs } from "../src/libraries/PythLibrary.sol";
 
 /// @title SwapRouterIntegrationTest
 /// @notice Comprehensive integration tests for SwapRouterFixed with DetoxHook and Pyth

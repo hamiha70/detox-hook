@@ -24,7 +24,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 // Our contract
 import {DetoxHook} from "../src/DetoxHook.sol";
-import {MockPyth} from "../src/libraries/PythLibrary.sol";
+import {MockPyth} from "../src/libraries/PythMock.sol";
 
 contract DetoxHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;

@@ -17,7 +17,8 @@ import { IERC20Minimal } from "@uniswap/v4-core/src/interfaces/external/IERC20Mi
 import { SwapParams, ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import { MockPyth, PythStructs } from "../src/libraries/PythLibrary.sol";
+import { MockPyth } from "../src/libraries/PythMock.sol";
+import { PythStructs } from "../src/libraries/PythLibrary.sol";
 import { MockERC20 } from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 contract DetoxHookWave1Test is Test, Deployers {

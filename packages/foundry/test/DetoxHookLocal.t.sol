@@ -20,7 +20,7 @@ import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiqui
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {HookMiner} from "@v4-periphery/src/utils/HookMiner.sol";
-import {MockPyth} from "../src/libraries/PythLibrary.sol";
+import {MockPyth} from "../src/libraries/PythMock.sol";
 
 /**
  * @title DetoxHookLocal
