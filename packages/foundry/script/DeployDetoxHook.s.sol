@@ -5,9 +5,11 @@ import "forge-std/Script.sol";
 import "forge-std/console.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { DetoxHook } from "../src/DetoxHook.sol";
+import { PriceRegistry } from "../src/PriceRegistry.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { HookMiner } from "@v4-periphery/src/utils/HookMiner.sol";
 import { ChainAddresses } from "./ChainAddresses.sol";
+import { DeployPriceRegistry } from "./DeployPriceRegistry.s.sol";
 
 /// @title DetoxHookDeployScript
 /// @notice Deployment script for DetoxHook with proper address mining
@@ -22,37 +24,105 @@ contract DeployDetoxHook is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     
     // Events for deployment tracking
-    event DetoxHookDeployed(address indexed hook, address indexed poolManager, uint256 chainId, bytes32 salt);
+    event DetoxHookDeployed(address indexed hook, address indexed poolManager, address indexed priceRegistry, uint256 chainId, bytes32 salt);
+    event PriceRegistryDeployed(address indexed priceRegistry, uint256 chainId);
     event DeploymentValidated(address indexed hook, bool beforeSwap, bool beforeSwapReturnDelta);
     event SaltMined(bytes32 salt, address expectedAddress, uint160 flags);
+
+    // Deployment configuration
+    struct DeploymentConfig {
+        address poolManager;
+        address priceRegistry;
+        address pythOracle;
+        bool deployNewRegistry;
+    }
 
     /// @notice Main deployment function
     function run() external virtual {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
+        address deployer = vm.addr(deployerPrivateKey);
+        
+        console.log("=== DETOX HOOK DEPLOYMENT ===");
+        console.log("Deployer:", deployer);
+        console.log("Chain ID:", block.chainid);
+        console.log("Balance:", deployer.balance);
+
         vm.startBroadcast(deployerPrivateKey);
         
-        address poolManager = getPoolManagerAddress();
-        DetoxHook hook = deployDetoxHook(poolManager);
+        // Get deployment configuration
+        DeploymentConfig memory config = getDeploymentConfig(deployer);
+        
+        // Deploy PriceRegistry if needed
+        if (config.deployNewRegistry) {
+            config.priceRegistry = deployPriceRegistry(deployer);
+        }
+        
+        // Deploy DetoxHook
+        DetoxHook hook = deployDetoxHook(config);
         
         vm.stopBroadcast();
         
-        console.log("=== Deployment Complete ===");
+        console.log("=== DEPLOYMENT COMPLETE ===");
         console.log("DetoxHook deployed at:", address(hook));
+        console.log("PriceRegistry:", config.priceRegistry);
         console.log("Chain ID:", block.chainid);
-        console.log("Pool Manager:", poolManager);
+        console.log("Pool Manager:", config.poolManager);
+        console.log("Pyth Oracle:", config.pythOracle);
         console.log("Block Explorer:", ChainAddresses.getBlockExplorer(block.chainid));
     }
 
-    /// @notice Deploy DetoxHook with address mining and comprehensive logging
-    /// @param poolManager The Pool Manager address to use
-    /// @return hook The deployed DetoxHook instance
-    function deployDetoxHook(address poolManager) public returns (DetoxHook hook) {
-        require(poolManager != address(0), "Pool Manager address cannot be zero");
+    /// @notice Get deployment configuration for the current chain
+    /// @param deployer The deployer address
+    /// @return config The deployment configuration
+    function getDeploymentConfig(address deployer) public view returns (DeploymentConfig memory config) {
+        config.poolManager = getPoolManagerAddress();
+        config.pythOracle = ChainAddresses.getPythOracle(block.chainid);
+        
+        // Check if PriceRegistry is already deployed using environment variable
+        try vm.envAddress("PRICE_REGISTRY") returns (address registryAddress) {
+            config.priceRegistry = registryAddress;
+            config.deployNewRegistry = false;
+            console.log("Using existing PriceRegistry:", registryAddress);
+        } catch {
+            config.priceRegistry = address(0);
+            config.deployNewRegistry = true;
+            console.log("Will deploy new PriceRegistry");
+        }
+        
+        require(config.poolManager != address(0), "Pool Manager address not found for chain");
+        require(config.pythOracle != address(0), "Pyth Oracle address not found for chain");
+    }
 
-        console.log("=== DetoxHook Deployment ===");
+    /// @notice Deploy PriceRegistry
+    /// @param deployer The deployer address
+    /// @return priceRegistry The deployed PriceRegistry address
+    function deployPriceRegistry(address deployer) public returns (address priceRegistry) {
+        console.log("=== DEPLOYING PRICE REGISTRY ===");
+        
+        DeployPriceRegistry registryScript = new DeployPriceRegistry();
+        registryScript.run();
+        priceRegistry = registryScript.getRegistryAddress();
+        
+        console.log("PriceRegistry deployed at:", priceRegistry);
+        emit PriceRegistryDeployed(priceRegistry, block.chainid);
+        
+        return priceRegistry;
+    }
+
+    /// @notice Deploy DetoxHook with address mining and comprehensive logging
+    /// @param config The deployment configuration
+    /// @return hook The deployed DetoxHook instance
+    function deployDetoxHook(DeploymentConfig memory config) public returns (DetoxHook hook) {
+        require(config.poolManager != address(0), "Pool Manager address cannot be zero");
+        require(config.priceRegistry != address(0), "Price Registry address cannot be zero");
+        require(config.pythOracle != address(0), "Pyth Oracle address cannot be zero");
+
+        console.log("=== DETOX HOOK DEPLOYMENT ===");
         console.log("Chain ID:", block.chainid);
         console.log("Chain Name:", ChainAddresses.getChainName(block.chainid));
-        console.log("Pool Manager:", poolManager);
+        console.log("Pool Manager:", config.poolManager);
+        console.log("Price Registry:", config.priceRegistry);
+        console.log("Pyth Oracle:", config.pythOracle);
         console.log("Deployer:", msg.sender);
 
         // Validate chain addresses before deployment
@@ -61,10 +131,10 @@ contract DeployDetoxHook is Script {
         }
 
         // Mine the correct salt for hook address
-        bytes32 salt = mineHookSalt(poolManager);
+        bytes32 salt = mineHookSalt(config);
 
         // Deploy the hook using CREATE2
-        hook = deployDetoxHookWithSalt(poolManager, salt);
+        hook = deployDetoxHookWithSalt(config, salt);
 
         // Validate deployment
         validateDeployment(hook);
@@ -76,16 +146,19 @@ contract DeployDetoxHook is Script {
     }
 
     /// @notice Deploy DetoxHook using a specific salt (for deterministic deployment)
-    /// @param poolManager The Pool Manager address to use
+    /// @param config The deployment configuration
     /// @param salt The salt for CREATE2 deployment
     /// @return hook The deployed DetoxHook instance
-    function deployDetoxHookDeterministic(address poolManager, bytes32 salt) public returns (DetoxHook hook) {
-        require(poolManager != address(0), "Pool Manager address cannot be zero");
+    function deployDetoxHookDeterministic(DeploymentConfig memory config, bytes32 salt) public returns (DetoxHook hook) {
+        require(config.poolManager != address(0), "Pool Manager address cannot be zero");
+        require(config.priceRegistry != address(0), "Price Registry address cannot be zero");
+        require(config.pythOracle != address(0), "Pyth Oracle address cannot be zero");
 
-        console.log("=== DetoxHook Deterministic Deployment ===");
+        console.log("=== DETOX HOOK DETERMINISTIC DEPLOYMENT ===");
         console.log("Chain ID:", block.chainid);
         console.log("Chain Name:", ChainAddresses.getChainName(block.chainid));
-        console.log("Pool Manager:", poolManager);
+        console.log("Pool Manager:", config.poolManager);
+        console.log("Price Registry:", config.priceRegistry);
         console.log("Salt:", vm.toString(salt));
         console.log("Deployer:", msg.sender);
 
@@ -95,7 +168,7 @@ contract DeployDetoxHook is Script {
         }
 
         // Deploy the hook using CREATE2
-        hook = deployDetoxHookWithSalt(poolManager, salt);
+        hook = deployDetoxHookWithSalt(config, salt);
 
         // Validate deployment
         validateDeployment(hook);
@@ -107,9 +180,9 @@ contract DeployDetoxHook is Script {
     }
 
     /// @notice Mine the correct salt for DetoxHook deployment
-    /// @param poolManager The Pool Manager address to use
+    /// @param config The deployment configuration
     /// @return salt The mined salt that produces a valid hook address
-    function mineHookSalt(address poolManager) public returns (bytes32 salt) {
+    function mineHookSalt(DeploymentConfig memory config) public returns (bytes32 salt) {
         console.log("=== Mining Hook Address ===");
         console.log("Required flags:", HOOK_FLAGS);
         console.log("Mining for address with correct flag bits...");
@@ -120,7 +193,12 @@ contract DeployDetoxHook is Script {
 
         // Prepare creation code with constructor arguments
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), msg.sender, address(0));
+        bytes memory constructorArgs = abi.encode(
+            IPoolManager(config.poolManager), 
+            msg.sender, 
+            config.pythOracle, 
+            config.priceRegistry
+        );
         bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
 
         // Manual mining with randomness
@@ -155,15 +233,20 @@ contract DeployDetoxHook is Script {
     }
 
     /// @notice Deploy DetoxHook using CREATE2 with the given salt
-    /// @param poolManager The Pool Manager address to use
+    /// @param config The deployment configuration
     /// @param salt The salt for CREATE2 deployment
     /// @return hook The deployed DetoxHook instance
-    function deployDetoxHookWithSalt(address poolManager, bytes32 salt) public returns (DetoxHook hook) {
+    function deployDetoxHookWithSalt(DeploymentConfig memory config, bytes32 salt) public returns (DetoxHook hook) {
         console.log("=== CREATE2 Deployment ===");
 
         // Calculate expected address
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), msg.sender, address(0));
+        bytes memory constructorArgs = abi.encode(
+            IPoolManager(config.poolManager), 
+            msg.sender, 
+            config.pythOracle, 
+            config.priceRegistry
+        );
         bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
 
         address expectedAddress = HookMiner.computeAddress(CREATE2_DEPLOYER, uint256(salt), creationCodeWithArgs);
@@ -172,25 +255,30 @@ contract DeployDetoxHook is Script {
         console.log("Using CREATE2 Deployer:", CREATE2_DEPLOYER);
 
         // Deploy using CREATE2 Deployer Proxy
-        hook = deployWithCreate2Proxy(poolManager, salt);
+        hook = deployWithCreate2Proxy(config, salt);
 
         require(address(hook) == expectedAddress, "Deployment address mismatch");
         console.log("DetoxHook deployed at:", address(hook));
 
         // Emit deployment event
-        emit DetoxHookDeployed(address(hook), poolManager, block.chainid, salt);
+        emit DetoxHookDeployed(address(hook), config.poolManager, config.priceRegistry, block.chainid, salt);
 
         return hook;
     }
 
     /// @notice Deploy contract using CREATE2 Deployer Proxy
-    /// @param poolManager The Pool Manager address to use
+    /// @param config The deployment configuration
     /// @param salt The salt for CREATE2 deployment
     /// @return hook The deployed DetoxHook instance
-    function deployWithCreate2Proxy(address poolManager, bytes32 salt) public returns (DetoxHook hook) {
+    function deployWithCreate2Proxy(DeploymentConfig memory config, bytes32 salt) public returns (DetoxHook hook) {
         // Prepare deployment data
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), msg.sender, address(0));
+        bytes memory constructorArgs = abi.encode(
+            IPoolManager(config.poolManager), 
+            msg.sender, 
+            config.pythOracle, 
+            config.priceRegistry
+        );
         bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
 
         // The CREATE2 Deployer Proxy expects: salt (32 bytes) + creation code
@@ -245,6 +333,7 @@ contract DeployDetoxHook is Script {
         console.log("Chain:", ChainAddresses.getChainName(block.chainid));
         console.log("Block Explorer:", ChainAddresses.getBlockExplorer(block.chainid));
         console.log("Pool Manager:", address(hook.poolManager()));
+        console.log("Price Registry:", address(hook.getPriceRegistry()));
         console.log("Hook Flags:", uint160(address(hook)) & HookMiner.FLAG_MASK);
         
         // Log additional chain info for non-local chains
@@ -283,13 +372,37 @@ contract DeployDetoxHook is Script {
         return keccak256(abi.encodePacked(deployer, block.chainid, nonce, "DetoxHook"));
     }
 
-    /// @notice Compute the address that would be deployed with a given salt
+    /// @notice Compute the address that would be deployed with a given salt and config
+    /// @param config The deployment configuration
+    /// @param salt The deployment salt
+    /// @return The computed address
+    function computeHookAddress(DeploymentConfig memory config, bytes32 salt) public view returns (address) {
+        bytes memory creationCode = type(DetoxHook).creationCode;
+        // Use exact same constructor args as deployment to ensure correct address computation
+        bytes memory constructorArgs = abi.encode(
+            IPoolManager(config.poolManager), 
+            msg.sender, 
+            config.pythOracle, 
+            config.priceRegistry
+        );
+        bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
+        
+        return HookMiner.computeAddress(CREATE2_DEPLOYER, uint256(salt), creationCodeWithArgs);
+    }
+
+    /// @notice Compute the address that would be deployed with a given salt (legacy)
     /// @param poolManager The Pool Manager address
     /// @param salt The deployment salt
     /// @return The computed address
     function computeHookAddress(address poolManager, bytes32 salt) public view returns (address) {
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), msg.sender, address(0));
+        // Use basic 4-parameter constructor for backward compatibility
+        bytes memory constructorArgs = abi.encode(
+            IPoolManager(poolManager), 
+            msg.sender, 
+            address(0), // oracle placeholder
+            address(0)  // priceRegistry placeholder
+        );
         bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
         
         return HookMiner.computeAddress(CREATE2_DEPLOYER, uint256(salt), creationCodeWithArgs);

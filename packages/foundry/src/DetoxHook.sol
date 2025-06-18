@@ -16,6 +16,7 @@ import { HookLibrary } from "./libraries/HookLibrary.sol";
 import { ArbitrageLib } from "./libraries/ArbitrageLib.sol";
 import { OracleLib } from "./libraries/OracleLib.sol";
 import { IERC20Minimal } from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
+import { PriceRegistry } from "./PriceRegistry.sol";
 import "forge-std/console.sol";
 
 contract DetoxHook is BaseHook {
@@ -29,16 +30,10 @@ contract DetoxHook is BaseHook {
     uint256 private constant STALENESS_THRESHOLD = 60; // Oracle staleness limit in seconds
     uint256 private constant BASIS_POINTS = 10000; // 100% in basis points
 
-    // Chain-specific constants
-    address private constant USDC_ON_ARBITRUM = 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d;
-    address private constant PYTH_ORACLE_ON_ARBITRUM_SEPOLIA = 0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF;
-    bytes32 private constant ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
-    bytes32 private constant USDC_USD_PRICE_ID = 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
-
     // Contract state
     IPyth public immutable pythOracle;
+    PriceRegistry public immutable priceRegistry;
     address public immutable owner;
-    mapping(Currency => bytes32) public pythPriceIds;
 
     // Mapping to track accumulated tokens per pool and token
     mapping(PoolId => mapping(Currency => uint256)) public accumulatedTokens;
@@ -47,27 +42,30 @@ contract DetoxHook is BaseHook {
     uint256 public rhoBps;
     uint256 public stalenessThreshold;
 
-    constructor(IPoolManager _poolManager, address _owner, address _oracle) BaseHook(_poolManager) {
+    /**
+     * @notice Initialize DetoxHook with modular architecture
+     * @param _poolManager Uniswap V4 Pool Manager contract
+     * @param _owner Address that will own this hook contract
+     * @param _oracle Pyth Oracle contract address
+     * @param _priceRegistry Price Registry contract for token/price ID mappings
+     */
+    constructor(
+        IPoolManager _poolManager, 
+        address _owner, 
+        address _oracle,
+        address _priceRegistry
+    ) BaseHook(_poolManager) {
+        require(_owner != address(0), "Invalid owner address");
+        require(_oracle != address(0), "Invalid oracle address");
+        require(_priceRegistry != address(0), "Invalid price registry address");
+        
         owner = _owner;
+        pythOracle = IPyth(_oracle);
+        priceRegistry = PriceRegistry(_priceRegistry);
         
         // Initialize configurable parameters
         rhoBps = RHO_BPS;
         stalenessThreshold = STALENESS_THRESHOLD;
-
-        // If oracle is provided, use it; otherwise use default logic
-        if (_oracle != address(0)) {
-            pythOracle = IPyth(_oracle);
-        } else if (block.chainid == 421614) {
-            // Only initialize Pyth oracle on Arbitrum Sepolia (chain ID 421614)
-            pythOracle = IPyth(PYTH_ORACLE_ON_ARBITRUM_SEPOLIA);
-        } else {
-            // On other chains (like Anvil), set to zero address
-            pythOracle = IPyth(address(0));
-        }
-
-        // Initialize the price oracle mappings for the currency pairs we need
-        pythPriceIds[Currency.wrap(address(0))] = ETH_USD_PRICE_ID;
-        pythPriceIds[Currency.wrap(USDC_ON_ARBITRUM)] = USDC_USD_PRICE_ID;
     }
 
     modifier onlyOwner() {
@@ -104,40 +102,60 @@ contract DetoxHook is BaseHook {
         // --- NATIVE ETH NOTE ---
         // In Uniswap v4, Currency type abstracts both native ETH (address(0)) and ERC20. If inputCurrency or outputCurrency is address(0), it means native ETH. If not, it's an ERC20. This is important for funding and for correct price ID mapping.
         // --- Fetch Pyth prices ---
-        // Always fetch both ETH/USD and USDC/USD
-        (uint256 ethPrice, , bool ethValid) = _getOraclePriceWithConfidence(Currency.wrap(address(0)));
-        (uint256 usdcPrice, , bool usdcValid) = _getOraclePriceWithConfidence(Currency.wrap(USDC_ON_ARBITRUM));
-        // Logging for debugging oracle validity
-        PythStructs.Price memory ethRaw = IPyth(pythOracle).getPriceUnsafe(pythPriceIds[Currency.wrap(address(0))]);
-        PythStructs.Price memory usdcRaw = IPyth(pythOracle).getPriceUnsafe(pythPriceIds[Currency.wrap(USDC_ON_ARBITRUM)]);
-        console.log("[HOOK] ETH_RAW.price:"); console.logInt(ethRaw.price);
-        console.log("[HOOK] ETH_RAW.conf:"); console.logUint(ethRaw.conf);
-        console.log("[HOOK] ETH_RAW.expo:"); console.logInt(ethRaw.expo);
-        console.log("[HOOK] ETH_RAW.publishTime:"); console.logUint(ethRaw.publishTime);
-        console.log("[HOOK] USDC_RAW.price:"); console.logInt(usdcRaw.price);
-        console.log("[HOOK] USDC_RAW.conf:"); console.logUint(usdcRaw.conf);
-        console.log("[HOOK] USDC_RAW.expo:"); console.logInt(usdcRaw.expo);
-        console.log("[HOOK] USDC_RAW.publishTime:"); console.logUint(usdcRaw.publishTime);
+        // Get ETH (native) and first registered token (typically USDC) prices
+        Currency ethCurrency = Currency.wrap(address(0));
+        (uint256 ethPrice, , bool ethValid) = _getOraclePriceWithConfidence(ethCurrency);
+        
+        // Get the other currency in the pair for price comparison
+        Currency otherCurrency = params.zeroForOne ? outputCurrency : inputCurrency;
+        (uint256 otherPrice, , bool otherValid) = _getOraclePriceWithConfidence(otherCurrency);
+        // Logging for debugging oracle validity  
+        bytes32 ethPriceId = priceRegistry.getPriceId(Currency.unwrap(ethCurrency));
+        bytes32 otherPriceId = priceRegistry.getPriceId(Currency.unwrap(otherCurrency));
+        
+        if (ethPriceId != bytes32(0)) {
+            PythStructs.Price memory ethRaw = IPyth(pythOracle).getPriceUnsafe(ethPriceId);
+            console.log("[HOOK] ETH_RAW.price:"); console.logInt(ethRaw.price);
+            console.log("[HOOK] ETH_RAW.conf:"); console.logUint(ethRaw.conf);
+            console.log("[HOOK] ETH_RAW.expo:"); console.logInt(ethRaw.expo);
+            console.log("[HOOK] ETH_RAW.publishTime:"); console.logUint(ethRaw.publishTime);
+        }
+        
+        if (otherPriceId != bytes32(0)) {
+            PythStructs.Price memory otherRaw = IPyth(pythOracle).getPriceUnsafe(otherPriceId);
+            console.log("[HOOK] OTHER_RAW.price:"); console.logInt(otherRaw.price);
+            console.log("[HOOK] OTHER_RAW.conf:"); console.logUint(otherRaw.conf);
+            console.log("[HOOK] OTHER_RAW.expo:"); console.logInt(otherRaw.expo);
+            console.log("[HOOK] OTHER_RAW.publishTime:"); console.logUint(otherRaw.publishTime);
+        }
+        
         console.log("[HOOK] block.timestamp:"); console.logUint(block.timestamp);
         console.log("[HOOK] stalenessThreshold:"); console.logUint(stalenessThreshold);
         console.log("[HOOK] ethValid:"); console.logBool(ethValid);
-        console.log("[HOOK] usdcValid:"); console.logBool(usdcValid);
-        require(ethValid && usdcValid, "Oracle prices invalid");
+        console.log("[HOOK] otherValid:"); console.logBool(otherValid);
+        require(ethValid && otherValid, "Oracle prices invalid");
         // 2. Calculate prices for arbitrage analysis
         // Convert to ARBITRAGE_PRECISION (18 decimals) for ArbitrageLib
         uint256 ethPriceInArbitragePrecision = FullMath.mulDiv(ethPrice, 1e18, PRICE_PRECISION);
-        uint256 usdcPriceInArbitragePrecision = FullMath.mulDiv(usdcPrice, 1e18, PRICE_PRECISION);
+        uint256 otherPriceInArbitragePrecision = FullMath.mulDiv(otherPrice, 1e18, PRICE_PRECISION);
         
         uint256 inputPrice;
         uint256 outputPrice;
-        if (params.zeroForOne) {
-            // ETH->USDC: input is ETH, output is USDC
-            inputPrice = ethPriceInArbitragePrecision;   // ETH price in USD (18 decimals)
-            outputPrice = usdcPriceInArbitragePrecision; // USDC price in USD (18 decimals)
+        
+        // Determine which currency corresponds to ETH for proper price assignment
+        bool inputIsEth = (Currency.unwrap(inputCurrency) == address(0));
+        bool outputIsEth = (Currency.unwrap(outputCurrency) == address(0));
+        
+        if (inputIsEth) {
+            inputPrice = ethPriceInArbitragePrecision;
+            outputPrice = otherPriceInArbitragePrecision;
+        } else if (outputIsEth) {
+            inputPrice = otherPriceInArbitragePrecision;
+            outputPrice = ethPriceInArbitragePrecision;
         } else {
-            // USDC->ETH: input is USDC, output is ETH  
-            inputPrice = usdcPriceInArbitragePrecision;  // USDC price in USD (18 decimals)
-            outputPrice = ethPriceInArbitragePrecision;  // ETH price in USD (18 decimals)
+            // Neither is ETH - use the prices as fetched
+            inputPrice = ethPriceInArbitragePrecision;   // This might need to be reconsidered for non-ETH pairs
+            outputPrice = otherPriceInArbitragePrecision;
         }
         // Granular logging: Oracle prices and confidence
         console.log("[HOOK] inputCurrency (should be asset IN):");
@@ -146,8 +164,8 @@ contract DetoxHook is BaseHook {
         console.logAddress(Currency.unwrap(outputCurrency));
         console.log("[HOOK] ethPrice (ETH/USD, 8 decimals):");
         console.logUint(ethPrice);
-        console.log("[HOOK] usdcPrice (USDC/USD, 8 decimals):");
-        console.logUint(usdcPrice);
+        console.log("[HOOK] otherPrice (Other/USD, 8 decimals):");
+        console.logUint(otherPrice);
         console.log("[HOOK] inputPrice (normalized, e.g. USDC/ETH):");
         console.logUint(inputPrice);
         console.log("[HOOK] outputPrice (should be 1e8):");
@@ -212,7 +230,10 @@ contract DetoxHook is BaseHook {
      * @return valid Whether the price is valid
      */
     function _getOraclePriceWithConfidence(Currency currency) internal view returns (uint256 price, uint256 confidence, bool valid) {
-        bytes32 priceId = pythPriceIds[currency];
+        bytes32 priceId = priceRegistry.getPriceId(Currency.unwrap(currency));
+        if (priceId == bytes32(0)) {
+            return (0, 0, false); // Currency not registered in price registry
+        }
         return OracleLib.getOraclePriceWithConfidence(pythOracle, priceId, stalenessThreshold);
     }
 
@@ -225,7 +246,10 @@ contract DetoxHook is BaseHook {
      * @return valid Whether the price is valid and fresh
      */
     function _getFreshOraclePriceWithConfidence(Currency currency, bytes[] memory priceUpdate) internal returns (uint256 price, uint256 confidence, bool valid) {
-        bytes32 priceId = pythPriceIds[currency];
+        bytes32 priceId = priceRegistry.getPriceId(Currency.unwrap(currency));
+        if (priceId == bytes32(0)) {
+            return (0, 0, false); // Currency not registered in price registry
+        }
         return OracleLib.getFreshOraclePrice(pythOracle, priceId, stalenessThreshold, priceUpdate);
     }
 
@@ -329,14 +353,11 @@ contract DetoxHook is BaseHook {
     }
 
     /**
-     * @notice Set price ID for a currency (only owner)
-     * @param currency The currency to set price ID for
-     * @param priceId The Pyth price ID
+     * @notice Get the price registry contract address
+     * @return Address of the price registry contract
      */
-    function setPriceId(Currency currency, bytes32 priceId) external onlyOwner {
-        bytes32 oldPriceId = pythPriceIds[currency];
-        pythPriceIds[currency] = priceId;
-        emit PriceIdUpdated(currency, oldPriceId, priceId);
+    function getPriceRegistry() external view returns (address) {
+        return address(priceRegistry);
     }
 
     /**
@@ -442,7 +463,7 @@ contract DetoxHook is BaseHook {
         (price, valid) = _getOraclePrice(currency);
         
         if (valid) {
-            bytes32 priceId = pythPriceIds[currency];
+            bytes32 priceId = priceRegistry.getPriceId(Currency.unwrap(currency));
             publishTime = OracleLib.getPublishTime(pythOracle, priceId);
         }
     }
@@ -463,7 +484,7 @@ contract DetoxHook is BaseHook {
         (price, confidence, valid) = _getOraclePriceWithConfidence(currency);
 
         if (valid) {
-            bytes32 priceId = pythPriceIds[currency];
+            bytes32 priceId = priceRegistry.getPriceId(Currency.unwrap(currency));
             publishTime = OracleLib.getPublishTime(pythOracle, priceId);
         }
     }
@@ -571,17 +592,7 @@ contract DetoxHook is BaseHook {
         uint256 newStaleness
     );
 
-    /**
-     * @notice Emitted when a price ID is updated for a currency
-     * @param currency The currency whose price ID was updated
-     * @param oldPriceId The previous price ID
-     * @param newPriceId The new price ID
-     */
-    event PriceIdUpdated(
-        Currency indexed currency, 
-        bytes32 oldPriceId, 
-        bytes32 newPriceId
-    );
+
 
     /**
      * @notice Emitted when accumulated ETH are withdrawn

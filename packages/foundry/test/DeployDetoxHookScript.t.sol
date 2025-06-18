@@ -9,6 +9,7 @@ import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { HookMiner } from "@v4-periphery/src/utils/HookMiner.sol";
 import { ChainAddresses } from "../script/ChainAddresses.sol";
+import { PythStructs } from "../src/libraries/PythLibrary.sol";
 
 /**
  * @title DeployDetoxHookScript Test
@@ -20,12 +21,12 @@ import { ChainAddresses } from "../script/ChainAddresses.sol";
  * works correctly across different environments and scenarios.
  * 
  * ## Test Coverage
- * - ✅ Local Anvil deployment with automatic CREATE2 deployer setup
- * - ✅ Arbitrum Sepolia fork deployment (requires DEPLOYMENT_KEY)
- * - ✅ Salt mining functionality and address validation
- * - ✅ CREATE2 deployer functionality verification
- * - ✅ Full end-to-end deployment workflow
- * - ✅ Error handling and edge cases
+ * -  Local Anvil deployment with automatic CREATE2 deployer setup
+ * -  Arbitrum Sepolia fork deployment (requires DEPLOYMENT_KEY)
+ * -  Salt mining functionality and address validation
+ * -  CREATE2 deployer functionality verification
+ * -  Full end-to-end deployment workflow
+ * -  Error handling and edge cases
  * 
  * ## Usage
  * 
@@ -57,10 +58,10 @@ import { ChainAddresses } from "../script/ChainAddresses.sol";
  * - Detailed logging and debugging capabilities
  * 
  * ## Critical Fixes Validated
- * - ✅ Constructor argument fix (3 args instead of 1)
- * - ✅ CREATE2 deployer availability on local Anvil
- * - ✅ Address mining with correct permission flags
- * - ✅ Deployment validation and error handling
+ * -  Constructor argument fix (3 args instead of 1)
+ * -  CREATE2 deployer availability on local Anvil
+ * -  Address mining with correct permission flags
+ * -  Deployment validation and error handling
  */
 contract DeployDetoxHookScriptTest is Test {
     using ChainAddresses for uint256;
@@ -172,8 +173,11 @@ contract DeployDetoxHookScriptTest is Test {
         
         console.log("Mock PoolManager deployed at:", poolManagerAddress);
         
+        // Create test deployment configuration
+        DeployDetoxHook.DeploymentConfig memory config = _createTestConfig(poolManagerAddress);
+        
         // Test the deployment script
-        deployedHook = deployScript.deployDetoxHook(poolManagerAddress);
+        deployedHook = deployScript.deployDetoxHook(config);
         
         // Verify deployment success
         _verifyDeployment(deployedHook, poolManagerAddress, "Local Anvil");
@@ -189,19 +193,22 @@ contract DeployDetoxHookScriptTest is Test {
         MockPoolManager mockPoolManager = new MockPoolManager();
         address poolManagerAddress = address(mockPoolManager);
         
+        // Create test deployment configuration  
+        DeployDetoxHook.DeploymentConfig memory config = _createTestConfig(poolManagerAddress);
+        
         // Test salt mining
-        bytes32 salt = deployScript.mineHookSalt(poolManagerAddress);
+        bytes32 salt = deployScript.mineHookSalt(config);
         
         console.log("Mined salt:", vm.toString(salt));
         
         // Verify the salt produces a valid address
-        address computedAddress = deployScript.computeHookAddress(poolManagerAddress, salt);
+        address computedAddress = deployScript.computeHookAddress(config, salt);
         uint160 addressFlags = uint160(computedAddress) & HookMiner.FLAG_MASK;
         
         assertEq(addressFlags, EXPECTED_HOOK_FLAGS, "Mined salt should produce address with correct flags");
         
         // Deploy using the mined salt
-        deployedHook = deployScript.deployDetoxHookWithSalt(poolManagerAddress, salt);
+        deployedHook = deployScript.deployDetoxHookWithSalt(config, salt);
         
         // Verify the deployment matches the computed address
         assertEq(address(deployedHook), computedAddress, "Deployed address should match computed address");
@@ -263,8 +270,9 @@ contract DeployDetoxHookScriptTest is Test {
         console.log("=== Testing Deployment with Zero PoolManager ===");
         
         // Should revert with zero address
+        DeployDetoxHook.DeploymentConfig memory invalidConfig = _createTestConfig(address(0));
         vm.expectRevert("Pool Manager address cannot be zero");
-        deployScript.deployDetoxHook(address(0));
+        deployScript.deployDetoxHook(invalidConfig);
     }
     
     function test_DeploymentValidationFailure() public {
@@ -276,8 +284,11 @@ contract DeployDetoxHookScriptTest is Test {
         MockPoolManager mockPoolManager = new MockPoolManager();
         address poolManagerAddress = address(mockPoolManager);
         
+        // Create test deployment configuration
+        DeployDetoxHook.DeploymentConfig memory config = _createTestConfig(poolManagerAddress);
+        
         // Deploy a hook
-        DetoxHook hook = deployScript.deployDetoxHook(poolManagerAddress);
+        DetoxHook hook = deployScript.deployDetoxHook(config);
         
         // Validation should pass for properly deployed hook
         deployScript.validateDeployment(hook);
@@ -296,16 +307,19 @@ contract DeployDetoxHookScriptTest is Test {
         MockPoolManager mockPoolManager = new MockPoolManager();
         address poolManagerAddress = address(mockPoolManager);
         
+        // Create test deployment configuration
+        DeployDetoxHook.DeploymentConfig memory config = _createTestConfig(poolManagerAddress);
+        
         // Step 1: Mine salt
-        bytes32 salt = deployScript.mineHookSalt(poolManagerAddress);
+        bytes32 salt = deployScript.mineHookSalt(config);
         console.log("Step 1: Salt mined");
         
         // Step 2: Compute expected address
-        address expectedAddress = deployScript.computeHookAddress(poolManagerAddress, salt);
+        address expectedAddress = deployScript.computeHookAddress(config, salt);
         console.log("Step 2: Expected address computed:", expectedAddress);
         
         // Step 3: Deploy with salt
-        DetoxHook hook = deployScript.deployDetoxHookWithSalt(poolManagerAddress, salt);
+        DetoxHook hook = deployScript.deployDetoxHookWithSalt(config, salt);
         console.log("Step 3: Hook deployed at:", address(hook));
         
         // Step 4: Validate deployment
@@ -373,9 +387,16 @@ contract DeployDetoxHookScriptTest is Test {
         
         console.log("Mock PoolManager deployed at:", poolManagerAddress);
         
-        // Get DetoxHook creation code and constructor args
+        // Get DetoxHook creation code and constructor args (4 parameters now)
         bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManagerAddress), address(this), address(0));
+        MockPriceRegistry mockRegistry = new MockPriceRegistry(address(this));
+        MockPythOracle mockOracle = new MockPythOracle();
+        bytes memory constructorArgs = abi.encode(
+            IPoolManager(poolManagerAddress),
+            address(this),           // owner
+            address(mockOracle),     // oracle
+            address(mockRegistry)    // priceRegistry
+        );
         bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
         
         console.log("Creation code length:", creationCode.length);
@@ -473,6 +494,21 @@ contract DeployDetoxHookScriptTest is Test {
         console.log("=== Verification Complete ===");
     }
 
+    /// @notice Create test deployment configuration
+    /// @param poolManager The pool manager address for testing
+    /// @return config Test deployment configuration
+    function _createTestConfig(address poolManager) internal returns (DeployDetoxHook.DeploymentConfig memory config) {
+        // Deploy a mock PriceRegistry for testing
+        MockPriceRegistry mockRegistry = new MockPriceRegistry(address(this));
+        
+        config = DeployDetoxHook.DeploymentConfig({
+            poolManager: poolManager,
+            priceRegistry: address(mockRegistry),
+            pythOracle: address(new MockPythOracle()), // Deploy a simple mock oracle
+            deployNewRegistry: false
+        });
+    }
+
     /// @notice Ensure CREATE2 deployer exists on local Anvil
     function _ensureCreate2DeployerExists() internal {
         address create2Deployer = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
@@ -516,4 +552,58 @@ contract MockPoolManager {
     function mockFunction() external pure returns (bool) {
         return true;
     }
-} 
+}
+
+/**
+ * @title Mock PriceRegistry for Testing
+ * @notice Realistic mock that returns actual Pyth price IDs for testing
+ */
+contract MockPriceRegistry {
+    address public owner;
+    
+    // Real Pyth price IDs used in tests
+    bytes32 public constant ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
+    bytes32 public constant USDC_USD_PRICE_ID = 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
+    
+    constructor(address _owner) {
+        owner = _owner;
+    }
+    
+    function getPriceId(address token) external pure returns (bytes32) {
+        // Return ETH price ID for address(0) or first currency
+        if (token == address(0)) {
+            return ETH_USD_PRICE_ID;
+        }
+        // Return USDC price ID for any other token (assume USDC)
+        return USDC_USD_PRICE_ID;
+    }
+    
+    function isRegistered(address) external pure returns (bool) {
+        return true; // Mock all tokens as registered
+    }
+}
+
+/**
+ * @title Mock Pyth Oracle for Testing
+ * @notice Simple mock to test deployment script locally
+ */
+contract MockPythOracle {
+    function getPriceUnsafe(bytes32) external view returns (PythStructs.Price memory) {
+        return PythStructs.Price({
+            price: 2000 * 1e6, // $2000
+            conf: 1e4,         // $0.01 confidence
+            expo: -8,          // 8 decimal places
+            publishTime: block.timestamp
+        });
+    }
+    
+    function getUpdateFee(bytes[] calldata) external pure returns (uint256) {
+        return 0; // Mock no fee
+    }
+    
+    function getUpdateFee(uint256) external pure returns (uint256) {
+        return 0; // Mock no fee  
+    }
+}
+
+ 

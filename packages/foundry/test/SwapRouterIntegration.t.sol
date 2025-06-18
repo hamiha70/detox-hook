@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
 import { DetoxHook } from "../src/DetoxHook.sol";
+import { PriceRegistry } from "../src/PriceRegistry.sol";
 
 // Uniswap V4 Core imports
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -73,7 +74,12 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         mockOracle = new MockPyth(60, 1); // 60 second validity, 1 wei fee
         // Deploy DetoxHook to the correct address with proper permissions and mockOracle
         address hookAddress = address(uint160(HOOK_FLAGS));
-        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(mockOracle)), hookAddress);
+        
+        // Deploy mock price registry for testing
+        MockPriceRegistry mockRegistry = new MockPriceRegistry(address(this));
+        
+        // Use 4-parameter constructor (poolManager, owner, oracle, priceRegistry)
+        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(mockOracle), address(mockRegistry)), hookAddress);
         detoxHook = DetoxHook(payable(hookAddress));
 
         // Create pool key
@@ -560,17 +566,18 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), swapAmount);
         SwapParams memory swapParams = SwapParams({ zeroForOne: true, amountSpecified: -int256(swapAmount), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 });
         PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false });
+        // TODO: Fix with PriceRegistry integration
         // Set up oracle and pool prices to guarantee arbitrage
         // Set pool price to 1.0 (default), set oracle price to 1.2 with tight confidence
         mockOracle.updatePriceFeeds(
-            detoxHook.pythPriceIds(currency0),
+            0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, // ETH price ID
             int64(120 * 1e6), // $120 price
             uint64(1 * 1e6),  // $1 confidence
             -8,               // -8 exponent
             uint64(block.timestamp)
         );
         mockOracle.updatePriceFeeds(
-            detoxHook.pythPriceIds(currency1),
+            0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, // USDC price ID
             int64(100 * 1e6), // $100 price
             uint64(1 * 1e6),  // $1 confidence
             -8,               // -8 exponent
@@ -657,5 +664,34 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         bytes[] memory updates = new bytes[](1);
         updates[0] = ethUpdate;
         return abi.encode(updates);
+    }
+}
+
+/**
+ * @title Mock PriceRegistry for Testing
+ * @notice Realistic mock that returns actual Pyth price IDs for testing
+ */
+contract MockPriceRegistry {
+    address public owner;
+    
+    // Real Pyth price IDs used in tests
+    bytes32 public constant ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
+    bytes32 public constant USDC_USD_PRICE_ID = 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
+    
+    constructor(address _owner) {
+        owner = _owner;
+    }
+    
+    function getPriceId(address token) external pure returns (bytes32) {
+        // Return ETH price ID for address(0) or first currency
+        if (token == address(0)) {
+            return ETH_USD_PRICE_ID;
+        }
+        // Return USDC price ID for any other token (assume USDC)
+        return USDC_USD_PRICE_ID;
+    }
+    
+    function isRegistered(address) external pure returns (bool) {
+        return true; // Mock all tokens as registered
     }
 } 

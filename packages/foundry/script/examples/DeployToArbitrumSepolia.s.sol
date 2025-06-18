@@ -25,9 +25,17 @@ contract DeployToArbitrumSepolia is DeployDetoxHook {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
         
+        // Get deployment configuration
+        address deployer = vm.addr(deployerPrivateKey);
+        DeploymentConfig memory config = getDeploymentConfig(deployer);
+        
+        // Deploy PriceRegistry if needed
+        if (config.deployNewRegistry) {
+            config.priceRegistry = deployPriceRegistry(deployer);
+        }
+        
         // Deploy the hook
-        address poolManager = ChainAddresses.getPoolManager(block.chainid);
-        DetoxHook hook = deployDetoxHook(poolManager);
+        DetoxHook hook = deployDetoxHook(config);
         
         vm.stopBroadcast();
         
