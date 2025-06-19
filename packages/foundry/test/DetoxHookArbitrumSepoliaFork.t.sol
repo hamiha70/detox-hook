@@ -351,7 +351,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
             } catch { return false; }
         } catch { return false; }
     }
-
+    
     function test_BasicSwap() public {
         console.log("=== Fork Test: Basic Swap with Adaptive Oracle ===");
         

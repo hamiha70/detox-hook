@@ -1,4 +1,4 @@
-.PHONY: build deploy generate-abis get-address account chain compile flatten fork format lint test verify update-frontend-address
+.PHONY: build deploy generate-abis get-address account chain compile flatten fork format lint test verify update-frontend-address test-fast test-core test-libs test-integration test-deployment test-all test-gas dev-test ci-test
 
 DEPLOY_SCRIPT ?= script/Deploy.s.sol
 
@@ -201,4 +201,40 @@ swap-router:
 	else \
 		node scripts-js/SwapRouterFrontend.cjs $(ARGS); \
 	fi
+
+# Test commands for rapid development
+test-fast:
+	@echo "🚀 Running fast tests (unit + integration only)..."
+	@forge test --match-contract "DetoxHookTest|ArbitrageLibTest|OracleLibTest|SwapRouterTest|SwapRouterIntegrationTest" -vv
+
+test-core:
+	@echo "🔧 Running core hook tests only..."
+	@forge test --match-contract "DetoxHookTest" -vv
+
+test-libs:
+	@echo "📚 Running library tests only..."
+	@forge test --match-contract "ArbitrageLibTest|OracleLibTest" -vv
+
+test-integration:
+	@echo "🔗 Running integration tests only..."
+	@forge test --match-contract "SwapRouterTest|SwapRouterIntegrationTest" -vv
+
+test-deployment:
+	@echo "🚀 Running deployment tests only..."
+	@forge test --match-contract "DeployDetoxHookScriptTest" -vv
+
+test-all:
+	@echo "🎯 Running all tests..."
+	@forge test --summary
+
+test-gas:
+	@echo "⛽ Running tests with gas reporting..."
+	@forge test --gas-report
+
+# Development workflow shortcuts
+dev-test: test-fast
+	@echo "✅ Fast development tests completed!"
+
+ci-test: test-all
+	@echo "✅ Full CI test suite completed!"
 

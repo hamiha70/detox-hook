@@ -46,9 +46,12 @@ library SimplifiedOracleLib {
         (PythStructs.Price memory pythPrice, bool success) = _safePythCall(oracle, priceId);
         if (!success) return (0, 0, 0, false);
 
-        // Validate freshness and price value
+        // Validate freshness and price value - must check BEFORE any casting
         valid = _isPriceValid(pythPrice, stalenessThreshold);
         if (!valid) return (0, 0, 0, false);
+
+        // Additional safety check for casting negative prices
+        if (pythPrice.price <= 0) return (0, 0, 0, false);
 
         // Normalize to PRECISION (1e18) regardless of exponent
         price = _normalizeToTargetPrecision(uint256(uint64(pythPrice.price)), pythPrice.expo);
@@ -59,7 +62,9 @@ library SimplifiedOracleLib {
         upperBound = price + confidence;
 
         // Final validation: ensure bounds are positive and properly ordered
-        require(lowerBound > 0 && upperBound > 0 && upperBound > lowerBound, "Invalid price bounds");
+        if (lowerBound == 0 || upperBound == 0 || upperBound <= lowerBound) {
+            return (0, 0, 0, false);
+        }
     }
 
     /**
@@ -100,13 +105,18 @@ library SimplifiedOracleLib {
                 valid = _isPriceValid(pythPrice, stalenessThreshold);
                 if (!valid) return (0, 0, 0, false);
                 
+                // Additional safety check for casting negative prices
+                if (pythPrice.price <= 0) return (0, 0, 0, false);
+                
                 price = _normalizeToTargetPrecision(uint256(uint64(pythPrice.price)), pythPrice.expo);
                 uint256 confidence = _normalizeToTargetPrecision(pythPrice.conf, pythPrice.expo);
                 
                 lowerBound = price > confidence ? price - confidence : 1;
                 upperBound = price + confidence;
                 
-                require(lowerBound > 0 && upperBound > 0 && upperBound > lowerBound, "Invalid price bounds");
+                if (lowerBound == 0 || upperBound == 0 || upperBound <= lowerBound) {
+                    return (0, 0, 0, false);
+                }
                 return (price, lowerBound, upperBound, true);
             } catch {
                 return (0, 0, 0, false);
@@ -153,7 +163,9 @@ library SimplifiedOracleLib {
         upperBound = (upper1 * PRECISION) / lower0;
 
         // Validation
-        require(lowerBound > 0 && upperBound > 0 && upperBound > lowerBound, "Invalid ratio bounds");
+        if (lowerBound == 0 || upperBound == 0 || upperBound <= lowerBound) {
+            return (0, 0, false);
+        }
         valid = true;
     }
 
@@ -170,7 +182,7 @@ library SimplifiedOracleLib {
         if (value == 0) return 0;
         
         // Validate exponent is reasonable
-        require(expo >= MIN_EXPO && expo <= MAX_EXPO, "Exponent out of range");
+        if (expo < MIN_EXPO || expo > MAX_EXPO) return 0;
 
         if (expo == -18) {
             // Already at target precision
@@ -178,17 +190,17 @@ library SimplifiedOracleLib {
         } else if (expo > -18) {
             // Need to scale up (multiply)
             uint32 scaleUp = uint32(18 + expo);
-            require(scaleUp <= 36, "Scale factor too large"); // Prevent overflow
+            if (scaleUp > 36) return 0; // Prevent overflow
             normalized = value * (10 ** scaleUp);
         } else {
             // expo < -18: Need to scale down (divide)
             uint32 scaleDown = uint32(-18 - expo);
-            require(scaleDown <= 36, "Scale factor too large");
+            if (scaleDown > 36) return 0;
             normalized = value / (10 ** scaleDown);
         }
 
         // Sanity check: ensure no overflow occurred
-        require(normalized >= value || expo > -18, "Normalization overflow");
+        if (normalized < value && expo <= -18) return 0;
     }
 
     /**
@@ -208,11 +220,11 @@ library SimplifiedOracleLib {
             return value; // Already normalized
         } else if (targetExpo > 0) {
             // Multiply by 10^targetExpo
-            require(targetExpo <= 36, "Exponent too large");
+            if (targetExpo > 36) return 0;
             return value * (10 ** uint32(targetExpo));
         } else {
             // Divide by 10^(-targetExpo)
-            require(targetExpo >= -36, "Exponent too small");
+            if (targetExpo < -36) return 0;
             return value / (10 ** uint32(-targetExpo));
         }
     }
