@@ -34,19 +34,19 @@ library ArbitrageLib {
     /**
      * @notice Parameters for arbitrage calculation
      * @param poolPrice Pool price ratio with ARBITRAGE_PRECISION (18 decimals)
-     * @param inputPrice Input currency price in USD with ARBITRAGE_PRECISION
-     * @param outputPrice Output currency price in USD with ARBITRAGE_PRECISION
-     * @param inputPriceConf Input currency price confidence with ARBITRAGE_PRECISION
-     * @param outputPriceConf Output currency price confidence with ARBITRAGE_PRECISION
+     * @param currency0Price Currency0 price in USD with ARBITRAGE_PRECISION  
+     * @param currency1Price Currency1 price in USD with ARBITRAGE_PRECISION
+     * @param currency0Conf Currency0 price confidence with ARBITRAGE_PRECISION
+     * @param currency1Conf Currency1 price confidence with ARBITRAGE_PRECISION
      * @param exactInputAmount The exact input amount for the swap in token decimals
      * @param zeroForOne The swap direction (true = currency0 → currency1)
      */
     struct ArbitrageParams {
         uint256 poolPrice;
-        uint256 inputPrice;
-        uint256 outputPrice;
-        uint256 inputPriceConf;
-        uint256 outputPriceConf;
+        uint256 currency0Price;
+        uint256 currency1Price;
+        uint256 currency0Conf;
+        uint256 currency1Conf;
         uint256 exactInputAmount;
         bool zeroForOne;
     }
@@ -72,15 +72,13 @@ library ArbitrageLib {
      * @dev For USDC/ETH pool: marketPrice = ETH_USD / USDC_USD * (10^(ETH_decimals - USDC_decimals))
      * @param inputCurrencyUSD Input currency price in USD (ARBITRAGE_PRECISION)
      * @param outputCurrencyUSD Output currency price in USD (ARBITRAGE_PRECISION) 
-     * @param inputDecimals Input token decimals (e.g., 18 for ETH)
-     * @param outputDecimals Output token decimals (e.g., 6 for USDC)
      * @return marketPrice Market price ratio with ARBITRAGE_PRECISION
      */
     function calculateMarketPriceRatio(
         uint256 inputCurrencyUSD,
         uint256 outputCurrencyUSD,
-        uint8 inputDecimals,
-        uint8 outputDecimals
+        uint8 /* inputDecimals */,
+        uint8 /* outputDecimals */
     ) internal pure returns (uint256 marketPrice) {
         if (outputCurrencyUSD == 0) return 0;
         
@@ -98,56 +96,57 @@ library ArbitrageLib {
 
     /**
      * @notice Calculate market price bounds with confidence intervals
-     * @param inputCurrencyUSD Input currency USD price (ARBITRAGE_PRECISION)
-     * @param outputCurrencyUSD Output currency USD price (ARBITRAGE_PRECISION)
-     * @param inputCurrencyConf Input currency confidence (ARBITRAGE_PRECISION)
-     * @param outputCurrencyConf Output currency confidence (ARBITRAGE_PRECISION)
-     * @param inputDecimals Input token decimals
-     * @param outputDecimals Output token decimals
-     * @return lower Lower bound of market price ratio
-     * @return upper Upper bound of market price ratio
+     * @param currency0USD Currency0 USD price (ARBITRAGE_PRECISION)
+     * @param currency1USD Currency1 USD price (ARBITRAGE_PRECISION)
+     * @param currency0Conf Currency0 confidence (ARBITRAGE_PRECISION)
+     * @param currency1Conf Currency1 confidence (ARBITRAGE_PRECISION)
+     * @return lower Lower bound of market price ratio (currency1/currency0)
+     * @return upper Upper bound of market price ratio (currency1/currency0)
      */
     function calculateMarketPriceBounds(
-        uint256 inputCurrencyUSD,
-        uint256 outputCurrencyUSD,
-        uint256 inputCurrencyConf,
-        uint256 outputCurrencyConf,
-        uint8 inputDecimals,
-        uint8 outputDecimals
+        uint256 currency0USD,
+        uint256 currency1USD,
+        uint256 currency0Conf,
+        uint256 currency1Conf,
+        uint8 /* inputDecimals */,
+        uint8 /* outputDecimals */
     ) internal pure returns (uint256 lower, uint256 upper) {
         console.log("[ARB:ENTRY] calculateMarketPriceBounds");
-        console.log("inputCurrencyUSD:", inputCurrencyUSD / 1e15);
-        console.log("outputCurrencyUSD:", outputCurrencyUSD / 1e15);
-        console.log("inputCurrencyConf:", inputCurrencyConf / 1e15);
-        console.log("outputCurrencyConf:", outputCurrencyConf / 1e15);
+        console.log("currency0USD:", currency0USD / 1e15);
+        console.log("currency1USD:", currency1USD / 1e15);
+        console.log("currency0Conf:", currency0Conf / 1e15);
+        console.log("currency1Conf:", currency1Conf / 1e15);
         
-        if (outputCurrencyUSD == 0) {
-            console.log("[ARB:DEFENSE] outputCurrencyUSD is zero, returning (0,0)");
+        if (currency0USD == 0) {
+            console.log("[ARB:DEFENSE] currency0USD is zero, returning (0,0)");
             return (0, 0);
         }
 
-        // Calculate bounds for input/output ratio with confidence
-        // Lower bound: (inputPrice - inputConf) / (outputPrice + outputConf)
-        // Upper bound: (inputPrice + inputConf) / (outputPrice - outputConf)
+        // Calculate bounds for currency1/currency0 ratio with confidence
+        // Market price = currency0_USD / currency1_USD (to match pool price format)
+        // Pool price format: how many currency1 per 1 currency0 (e.g., USDC per ETH)
+        // Lower bound: (currency0Price - currency0Conf) / (currency1Price + currency1Conf)
+        // Upper bound: (currency0Price + currency0Conf) / (currency1Price - currency1Conf)
         
-        uint256 inputLower = inputCurrencyUSD > inputCurrencyConf ? inputCurrencyUSD - inputCurrencyConf : 0;
-        uint256 inputUpper = inputCurrencyUSD + inputCurrencyConf;
-        uint256 outputLower = outputCurrencyUSD > outputCurrencyConf ? outputCurrencyUSD - outputCurrencyConf : 1; // Avoid division by zero
-        uint256 outputUpper = outputCurrencyUSD + outputCurrencyConf;
+        uint256 currency0Lower = currency0USD > currency0Conf ? currency0USD - currency0Conf : 1; // Avoid division by zero
+        uint256 currency0Upper = currency0USD + currency0Conf;
+        uint256 currency1Lower = currency1USD > currency1Conf ? currency1USD - currency1Conf : 1; // Avoid division by zero
+        uint256 currency1Upper = currency1USD + currency1Conf;
         
-        if (outputLower == 0 || outputUpper == 0) {
-            console.log("[ARB:DEFENSE] output bounds invalid, returning (0,0)");
+        if (currency1Lower == 0 || currency1Upper == 0) {
+            console.log("[ARB:DEFENSE] currency1 bounds invalid, returning (0,0)");
             return (0, 0);
         }
         
-        console.log("[ARB] inputLower:", inputLower / 1e15);
-        console.log("[ARB] inputUpper:", inputUpper / 1e15);
-        console.log("[ARB] outputLower:", outputLower / 1e15);
-        console.log("[ARB] outputUpper:", outputUpper / 1e15);
+        console.log("[ARB] currency0Lower:", currency0Lower / 1e15);
+        console.log("[ARB] currency0Upper:", currency0Upper / 1e15);
+        console.log("[ARB] currency1Lower:", currency1Lower / 1e15);
+        console.log("[ARB] currency1Upper:", currency1Upper / 1e15);
         
-        // Calculate price bounds: input/output ratio with ARBITRAGE_PRECISION
-        lower = FullMath.mulDiv(inputLower, ARBITRAGE_PRECISION, outputUpper);
-        upper = FullMath.mulDiv(inputUpper, ARBITRAGE_PRECISION, outputLower);
+        // Calculate price bounds: currency0/currency1 ratio with ARBITRAGE_PRECISION
+        // This gives us "how many currency1 per currency0" (e.g., USDC per ETH)
+        lower = FullMath.mulDiv(currency0Lower, ARBITRAGE_PRECISION, currency1Upper);
+        upper = FullMath.mulDiv(currency0Upper, ARBITRAGE_PRECISION, currency1Lower);
         
         console.log("[ARB] lower:", lower / 1e15);
         console.log("[ARB] upper:", upper / 1e15);
@@ -177,17 +176,18 @@ library ArbitrageLib {
         uint8 outputDecimals = params.zeroForOne ? 6 : 18; // USDC : ETH
         
         (uint256 marketPriceLower, uint256 marketPriceUpper) = calculateMarketPriceBounds(
-            params.inputPrice,
-            params.outputPrice,
-            params.inputPriceConf,
-            params.outputPriceConf,
+            params.currency0Price,
+            params.currency1Price,
+            params.currency0Conf,
+            params.currency1Conf,
             inputDecimals,
             outputDecimals
         );
 
         if (params.zeroForOne) {
             // zeroForOne: selling currency0 (ETH) for currency1 (USDC)
-            // Arbitrage exists if pool price > market upper bound
+            // Pool price and market price are both currency1/currency0 (USDC/ETH)
+            // Arbitrage exists if pool price > market upper bound (pool overpaying for ETH)
             console.log("[ARB:CHECK] poolPrice:", params.poolPrice / 1e15);
             console.log("[ARB:CHECK] marketPriceUpper:", marketPriceUpper / 1e15);
             
@@ -203,7 +203,8 @@ library ArbitrageLib {
             return FullMath.mulDiv(params.exactInputAmount, priceDiff, params.poolPrice);
         } else {
             // oneForZero: selling currency1 (USDC) for currency0 (ETH)
-            // Arbitrage exists if pool price < market lower bound
+            // Pool price and market price are both currency1/currency0 (USDC/ETH)
+            // Arbitrage exists if pool price < market lower bound (pool underpricing ETH)
             console.log("[ARB:CHECK] poolPrice:", params.poolPrice / 1e15);
             console.log("[ARB:CHECK] marketPriceLower:", marketPriceLower / 1e15);
             
@@ -226,10 +227,10 @@ library ArbitrageLib {
      * @return isOutside Whether pool price is outside confidence bounds
      */
     function isOutsideConfidenceBand(ArbitrageParams memory params) internal pure returns (bool) {
-        if (params.inputPrice == 0 || params.outputPrice == 0) return false;
+        if (params.currency0Price == 0 || params.currency1Price == 0) return false;
 
         // If both confidence values are zero, there's no confidence band - always return true
-        if (params.inputPriceConf == 0 && params.outputPriceConf == 0) return true;
+        if (params.currency0Conf == 0 && params.currency1Conf == 0) return true;
 
         // For simplified calculation, assume ETH (18 decimals) and USDC (6 decimals)
         uint8 inputDecimals = params.zeroForOne ? 18 : 6;
@@ -237,10 +238,10 @@ library ArbitrageLib {
 
         // Calculate market price bounds with confidence
         (uint256 marketPriceLower, uint256 marketPriceUpper) = calculateMarketPriceBounds(
-            params.inputPrice,
-            params.outputPrice,
-            params.inputPriceConf,
-            params.outputPriceConf,
+            params.currency0Price,
+            params.currency1Price,
+            params.currency0Conf,
+            params.currency1Conf,
             inputDecimals,
             outputDecimals
         );
@@ -263,10 +264,10 @@ library ArbitrageLib {
         uint8 outputDecimals = params.zeroForOne ? 6 : 18;
         
         (uint256 marketPriceLower, uint256 marketPriceUpper) = calculateMarketPriceBounds(
-            params.inputPrice,
-            params.outputPrice,
-            params.inputPriceConf,
-            params.outputPriceConf,
+            params.currency0Price,
+            params.currency1Price,
+            params.currency0Conf,
+            params.currency1Conf,
             inputDecimals,
             outputDecimals
         );
@@ -306,14 +307,14 @@ library ArbitrageLib {
     ) internal pure returns (ArbitrageResult memory result) {
         console.log("[ARB] analyzeArbitrageOpportunity: poolPrice");
         console.logUint(params.poolPrice);
-        console.log("[ARB] inputPrice");
-        console.logUint(params.inputPrice);
-        console.log("[ARB] outputPrice");
-        console.logUint(params.outputPrice);
-        console.log("[ARB] inputPriceConf");
-        console.logUint(params.inputPriceConf);
-        console.log("[ARB] outputPriceConf");
-        console.logUint(params.outputPriceConf);
+        console.log("[ARB] currency0Price");
+        console.logUint(params.currency0Price);
+        console.log("[ARB] currency1Price");
+        console.logUint(params.currency1Price);
+        console.log("[ARB] currency0Conf");
+        console.logUint(params.currency0Conf);
+        console.log("[ARB] currency1Conf");
+        console.logUint(params.currency1Conf);
         console.log("[ARB] exactInputAmount");
         console.logUint(params.exactInputAmount);
         console.log("[ARB] zeroForOne");
@@ -405,8 +406,8 @@ library ArbitrageLib {
      * @return isValid Whether parameters are valid
      */
     function validateArbitrageParams(ArbitrageParams memory params) internal pure returns (bool) {
-        return params.inputPrice > 0 && 
-               params.outputPrice > 0 && 
+        return params.currency0Price > 0 && 
+               params.currency1Price > 0 && 
                params.exactInputAmount > 0 &&
                params.poolPrice > 0;
     }

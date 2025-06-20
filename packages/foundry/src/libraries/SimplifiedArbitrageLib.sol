@@ -34,22 +34,28 @@ library SimplifiedArbitrageLib {
             return 0;
         }
 
-        // When oracleUpper == oracleLower (no confidence interval),
-        // we can still have arbitrage - just use either bound for comparison
-
+        // Check for arbitrage opportunities in both directions
         if (zeroForOne) {
-            // zeroForOne: selling currency0 for currency1
-            // Arbitrage exists if pool gives more currency1 than oracle upper bound
+            // zeroForOne: selling currency0 for currency1 (e.g., ETH -> USDC)
             if (poolPrice > oracleUpper) {
+                // Pool overpaying: poolPrice > market upper bound
                 // arbitrageAmount = swapAmount * (poolPrice - oracleUpper) / poolPrice
                 return (swapAmount * (poolPrice - oracleUpper)) / poolPrice;
-            }
-        } else {
-            // oneForZero: selling currency1 for currency0
-            // Arbitrage exists if pool gives more currency0 than oracle lower bound
-            if (poolPrice < oracleLower) {
+            } else if (poolPrice < oracleLower) {
+                // Pool underpricing: poolPrice < market lower bound  
                 // arbitrageAmount = swapAmount * (oracleLower - poolPrice) / oracleLower
                 return (swapAmount * (oracleLower - poolPrice)) / oracleLower;
+            }
+        } else {
+            // oneForZero: selling currency1 for currency0 (e.g., USDC -> ETH)
+            if (poolPrice < oracleLower) {
+                // Pool underpricing: poolPrice < market lower bound
+                // arbitrageAmount = swapAmount * (oracleLower - poolPrice) / oracleLower
+                return (swapAmount * (oracleLower - poolPrice)) / oracleLower;
+            } else if (poolPrice > oracleUpper) {
+                // Pool overpaying: poolPrice > market upper bound
+                // arbitrageAmount = swapAmount * (poolPrice - oracleUpper) / poolPrice
+                return (swapAmount * (poolPrice - oracleUpper)) / poolPrice;
             }
         }
 

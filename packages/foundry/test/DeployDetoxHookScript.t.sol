@@ -552,7 +552,7 @@ contract MockPoolManager {
     function mockFunction() external pure returns (bool) {
         return true;
     }
-}
+} 
 
 /**
  * @title Mock PriceRegistry for Testing

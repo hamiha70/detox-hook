@@ -11,6 +11,7 @@ import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { SqrtPriceMath } from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { BeforeSwapDelta, toBeforeSwapDelta } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import { console } from "forge-std/console.sol";
 
 /// @title HookLibrary
@@ -78,8 +79,15 @@ library HookLibrary {
         // Multiply by 10^18 for 18 decimal precision
         console.log("[SQRT2PRICE] sqrtPriceX96");
         console.logUint(uint256(sqrtPriceX96));
-        uint256 priceX192 = uint256(sqrtPriceX96) * sqrtPriceX96;
-        price = (priceX192 * 1e18) >> 192; // Divide by 2^192 and multiply by 10^18
+        
+        // Use FullMath.mulDiv to avoid overflow when squaring large sqrtPriceX96
+        // priceX192 = sqrtPriceX96^2 
+        uint256 priceX192 = FullMath.mulDiv(uint256(sqrtPriceX96), uint256(sqrtPriceX96), 1);
+        
+        // Convert from X192 to 18 decimal precision
+        // price = priceX192 * 1e18 / 2^192
+        price = FullMath.mulDiv(priceX192, 1e18, 1 << 192);
+        
         console.log("[SQRT2PRICE] price");
         console.logUint(price);
     }
