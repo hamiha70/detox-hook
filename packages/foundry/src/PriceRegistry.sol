@@ -28,6 +28,11 @@ contract PriceRegistry {
     /// @notice Mapping to check if a token is already registered
     mapping(address => bool) public isTokenRegistered;
 
+    /// @notice Mapping to track which price IDs are in use
+    /// @dev This needed because we allow address(0) as a token address an cannot rely on querying pricIdToToken
+
+    mapping(bytes32 => bool) private isPriceIdInUse;
+
     // ============ Events ============
 
     /// @notice Emitted when a price mapping is set
@@ -36,24 +41,48 @@ contract PriceRegistry {
     /// @notice Emitted when a price mapping is removed
     event PriceMappingRemoved(address indexed token, bytes32 indexed priceId, string symbol);
     
-    /// @notice Emitted when multiple price mappings are set in batch
-    event BatchPriceMappingsSet(uint256 count);
-
     // ============ Errors ============
 
-    error OnlyOwner();
-    error InvalidToken();
-    error InvalidPriceId(); 
-    error TokenAlreadyRegistered(address token);
+    /// @notice Thrown when a non-owner tries to call owner-only functions
+    /// @param caller The address that attempted the call
+    /// @param expectedOwner The actual owner address
+    error OnlyOwner(address caller, address expectedOwner);
+
+    /// @notice Thrown when an invalid owner address is provided
+    /// @param owner The invalid owner address
+    error InvalidOwner(address owner);
+    
+    /// @notice Thrown when an invalid token address is provided
+    /// @param token The invalid token address
+    error InvalidToken(address token);
+    
+    /// @notice Thrown when an invalid price ID is provided
+    /// @param priceId The invalid price ID (usually bytes32(0))
+    error InvalidPriceId(bytes32 priceId); 
+    
+    /// @notice Thrown when trying to operate on an unregistered token
+    /// @param token The token that's not registered
     error TokenNotRegistered(address token);
-    error PriceIdAlreadyUsed(bytes32 priceId, address existingToken);
-    error ArrayLengthMismatch();
+    
+    /// @notice Thrown when trying to assign a price ID that's already used by another token
+    /// @param priceId The price ID that's already in use
+    /// @param existingToken The token that already uses this price ID
+    /// @param newToken The token trying to use the same price ID
+    error PriceIdAlreadyUsed(bytes32 priceId, address existingToken, address newToken);
+    
+    /// @notice Thrown when arrays in batch operations have mismatched lengths
+    /// @param tokensLength Length of tokens array
+    /// @param priceIdsLength Length of priceIds array  
+    /// @param symbolsLength Length of symbols array
+    error ArrayLengthMismatch(uint256 tokensLength, uint256 priceIdsLength, uint256 symbolsLength);
+    
+    /// @notice Thrown when trying to process empty arrays in batch operations
     error EmptyArrays();
 
     // ============ Modifiers ============
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert OnlyOwner();
+        if (msg.sender != owner) revert OnlyOwner(msg.sender, owner);
         _;
     }
 
@@ -64,7 +93,7 @@ contract PriceRegistry {
      * @param _owner Address that will own the registry and can update mappings
      */
     constructor(address _owner) {
-        if (_owner == address(0)) revert InvalidToken();
+        if (_owner == address(0)) revert InvalidOwner(_owner);
         owner = _owner;
     }
 
@@ -77,12 +106,11 @@ contract PriceRegistry {
      * @param symbol Token symbol for identification (e.g., "ETH", "USDC")
      */
     function setPriceMapping(address token, bytes32 priceId, string calldata symbol) external onlyOwner {
-        if (priceId == bytes32(0)) revert InvalidPriceId();
+        if (priceId == bytes32(0)) revert InvalidPriceId(priceId);
         
         // Check if price ID is already used by a different token
-        address existingToken = priceIdToToken[priceId];
-        if (existingToken != address(0) && existingToken != token) {
-            revert PriceIdAlreadyUsed(priceId, existingToken);
+        if (isPriceIdInUse[priceId] && priceIdToToken[priceId] != token) {
+            revert PriceIdAlreadyUsed(priceId, priceIdToToken[priceId], token);
         }
         
         // Remove old mapping if token was previously registered
@@ -90,6 +118,7 @@ contract PriceRegistry {
             bytes32 oldPriceId = tokenToPriceId[token];
             if (oldPriceId != bytes32(0)) {
                 delete priceIdToToken[oldPriceId];
+                delete isPriceIdInUse[oldPriceId];
             }
         } else {
             // Add to registered tokens array
@@ -100,6 +129,7 @@ contract PriceRegistry {
         // Set new mappings
         tokenToPriceId[token] = priceId;
         priceIdToToken[priceId] = token;
+        isPriceIdInUse[priceId] = true;
         tokenSymbols[token] = symbol;
         
         emit PriceMappingSet(token, priceId, symbol);
@@ -111,6 +141,9 @@ contract PriceRegistry {
      * @param priceIds Array of corresponding Pyth price feed IDs
      * @param symbols Array of corresponding token symbols
      * @dev All arrays must have the same length
+     * @dev All priceIds, must be new and unique
+     * @dev Ttokens do NOT need be new and unique. If a token is already registered, it will be updated with the new price ID and symbol
+     * @dev Uniqueness and newness of symbols is not checked and not enforced
      */
     function setBatchPriceMappings(
         address[] calldata tokens,
@@ -119,26 +152,42 @@ contract PriceRegistry {
     ) external onlyOwner {
         uint256 length = tokens.length;
         if (length == 0) revert EmptyArrays();
-        if (length != priceIds.length || length != symbols.length) revert ArrayLengthMismatch();
+        if (length != priceIds.length || length != symbols.length) {
+            revert ArrayLengthMismatch(length, priceIds.length, symbols.length);
+        }
         
+        // First pass: Validate all inputs and check for duplicates
+        for (uint256 i = 0; i < length; i++) {
+            bytes32 priceId = priceIds[i];
+            address token = tokens[i];
+            
+            if (priceId == bytes32(0)) revert InvalidPriceId(priceId);
+            
+            // Check if price ID is already used by a different token in existing mappings
+            if (isPriceIdInUse[priceId] && priceIdToToken[priceId] != token) {
+                revert PriceIdAlreadyUsed(priceId, priceIdToToken[priceId], token);
+            }
+            
+            // Check for duplicates within this batch (j > i to avoid checking same element)
+            for (uint256 j = i + 1; j < length; j++) {
+                if (priceIds[i] == priceIds[j] && tokens[i] != tokens[j]) {
+                    revert PriceIdAlreadyUsed(priceIds[i], tokens[i], tokens[j]);
+                }
+            }
+        }
+        
+        // Second pass: Apply all changes (only after all validations pass)
         for (uint256 i = 0; i < length; i++) {
             address token = tokens[i];
             bytes32 priceId = priceIds[i];
             string calldata symbol = symbols[i];
-            
-            if (priceId == bytes32(0)) revert InvalidPriceId();
-            
-            // Check if price ID is already used by a different token
-            address existingToken = priceIdToToken[priceId];
-            if (existingToken != address(0) && existingToken != token) {
-                revert PriceIdAlreadyUsed(priceId, existingToken);
-            }
             
             // Remove old mapping if token was previously registered
             if (isTokenRegistered[token]) {
                 bytes32 oldPriceId = tokenToPriceId[token];
                 if (oldPriceId != bytes32(0)) {
                     delete priceIdToToken[oldPriceId];
+                    delete isPriceIdInUse[oldPriceId];
                 }
             } else {
                 // Add to registered tokens array
@@ -149,12 +198,11 @@ contract PriceRegistry {
             // Set new mappings
             tokenToPriceId[token] = priceId;
             priceIdToToken[priceId] = token;
+            isPriceIdInUse[priceId] = true;
             tokenSymbols[token] = symbol;
             
             emit PriceMappingSet(token, priceId, symbol);
         }
-        
-        emit BatchPriceMappingsSet(length);
     }
 
     /**
@@ -170,6 +218,7 @@ contract PriceRegistry {
         // Clear mappings
         delete tokenToPriceId[token];
         delete priceIdToToken[priceId];
+        delete isPriceIdInUse[priceId];
         delete tokenSymbols[token];
         delete isTokenRegistered[token];
         
@@ -189,8 +238,6 @@ contract PriceRegistry {
     function getPriceId(address token) external view returns (bytes32) {
         return tokenToPriceId[token];
     }
-
-
 
     /**
      * @notice Get token address for a Pyth price feed ID
@@ -218,8 +265,6 @@ contract PriceRegistry {
     function isRegistered(address token) external view returns (bool) {
         return isTokenRegistered[token];
     }
-
-
 
     /**
      * @notice Get the total number of registered tokens
