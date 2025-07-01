@@ -316,4 +316,93 @@ contract OracleLibTest is Test {
         
         assertTrue(valid, "Oracle calculation should be valid");
     }
+
+    /// @notice Test precise confidence bounds calculation with known mathematical values
+    function test_PreciseConfidenceBounds_MathematicalValidation() external {
+        console.log("=== TEST: Precise Confidence Bounds Mathematical Validation ===");
+        console.log("Validates: Exact mathematical implementation of (price1 +/- conf1) / (price0 +/- conf0)");
+        
+        // Setup known values where we can calculate exact expected results
+        // ETH: $1000 +/- $50, USDC: $1000 +/- $50 => Oracle ratio bounds calculable
+        console.log("\n--- Setup: ETH = $1000 +/- $50, USDC = $1000 +/- $50 ---");
+        
+        mockOracle.updatePriceFeeds(
+            ETH_USD_PRICE_ID,
+            100000000000, // $1000 with -8 exponent (1000 * 1e8)
+            5000000000,   // $50 confidence with -8 exponent (50 * 1e8)  
+            -8,
+            uint64(block.timestamp)
+        );
+        
+        mockOracle.updatePriceFeeds(
+            USDC_USD_PRICE_ID,
+            100000000000, // $1000 with -8 exponent (1000 * 1e8)
+            5000000000,   // $50 confidence with -8 exponent (50 * 1e8)
+            -8,
+            uint64(block.timestamp)
+        );
+        
+        // Manual calculation of expected bounds  
+        // ETH bounds: [$950, $1050]
+        // USDC bounds: [$950, $1050]
+        // Lower bound (USDC/ETH): $950 / $1050 = 0.904761904761904761905... 
+        // Upper bound (USDC/ETH): $1050 / $950 = 1.105263157894736842105...
+        
+        console.log("Expected mathematical results:");
+        console.log("- ETH bounds: [$950, $1050]");
+        console.log("- USDC bounds: [$950, $1050]");
+        console.log("- Lower bound (USDC/ETH): 950/1050 = 0.904761904761904761905");
+        console.log("- Upper bound (USDC/ETH): 1050/950 = 1.105263157894736842105");
+        
+        // Calculate actual bounds using SimplifiedOracleLib
+        (uint256 lowerBound, uint256 upperBound, bool valid) = 
+            SimplifiedOracleLib.calculatePriceRatioBounds(
+                mockOracle,
+                ETH_USD_PRICE_ID,   // priceId0 (denominator)
+                USDC_USD_PRICE_ID,  // priceId1 (numerator)
+                60
+            );
+            
+        console.log("\n--- Actual Results ---");
+        console.log("Lower bound:", lowerBound);
+        console.log("Upper bound:", upperBound);
+        console.log("Valid:", valid);
+        
+        // Calculate expected values in 1e18 precision
+        // Lower: 950 * 1e18 / 1050 = 904761904761904761905
+        // Upper: 1050 * 1e18 / 950 = 1105263157894736842105
+        uint256 expectedLower = (950 * PRECISION) / 1050;
+        uint256 expectedUpper = (1050 * PRECISION) / 950;
+        
+        console.log("\n--- Expected vs Actual Comparison ---");
+        console.log("Expected lower:", expectedLower);
+        console.log("Actual lower:  ", lowerBound);
+        console.log("Expected upper:", expectedUpper);
+        console.log("Actual upper:  ", upperBound);
+        
+        // Validate exact mathematical precision
+        assertEq(lowerBound, expectedLower, "Lower bound should match exact calculation: 950/1050");
+        assertEq(upperBound, expectedUpper, "Upper bound should match exact calculation: 1050/950");
+        assertTrue(valid, "Calculation should be valid");
+        
+        // Additional validation: bounds should be properly ordered
+        assertLt(lowerBound, PRECISION, "Lower bound should be less than 1.0 (in 1e18)");
+        assertGt(upperBound, PRECISION, "Upper bound should be greater than 1.0 (in 1e18)");
+        assertLt(lowerBound, upperBound, "Lower bound should be less than upper bound");
+        
+        console.log("\n--- Test Pool Price Within Bounds Scenario ---");
+        // Simulate a pool price that should be within these bounds
+        uint256 poolPrice = PRECISION; // Exactly 1.0 (1 USDC per ETH)
+        console.log("Simulated pool price (1.0 USDC/ETH):", poolPrice);
+        console.log("Pool within bounds?", poolPrice >= lowerBound && poolPrice <= upperBound);
+        
+        // Pool at 1.0 should be within bounds [0.904, 1.105] -> No arbitrage expected
+        assertTrue(poolPrice >= lowerBound && poolPrice <= upperBound, 
+                  "Pool price 1.0 should be within oracle bounds [0.904, 1.105]");
+        
+        console.log("[PASS] Precise confidence bounds mathematical validation complete");
+        console.log("[SUCCESS] PythMock produces exact mathematical results");
+        console.log("[SUCCESS] SimplifiedOracleLib calculates bounds correctly");
+        console.log("[SUCCESS] Foundation ready for DetoxHookV2 integration tests");
+    }
 } 
