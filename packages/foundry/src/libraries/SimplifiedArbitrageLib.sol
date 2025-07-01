@@ -41,10 +41,6 @@ library SimplifiedArbitrageLib {
                 // Pool overpaying: poolPrice > market upper bound
                 // arbitrageAmount = swapAmount * (poolPrice - oracleUpper) / poolPrice
                 return (swapAmount * (poolPrice - oracleUpper)) / poolPrice;
-            } else if (poolPrice < oracleLower) {
-                // Pool underpricing: poolPrice < market lower bound  
-                // arbitrageAmount = swapAmount * (oracleLower - poolPrice) / oracleLower
-                return (swapAmount * (oracleLower - poolPrice)) / oracleLower;
             }
         } else {
             // oneForZero: selling currency1 for currency0 (e.g., USDC -> ETH)
@@ -52,10 +48,6 @@ library SimplifiedArbitrageLib {
                 // Pool underpricing: poolPrice < market lower bound
                 // arbitrageAmount = swapAmount * (oracleLower - poolPrice) / oracleLower
                 return (swapAmount * (oracleLower - poolPrice)) / oracleLower;
-            } else if (poolPrice > oracleUpper) {
-                // Pool overpaying: poolPrice > market upper bound
-                // arbitrageAmount = swapAmount * (poolPrice - oracleUpper) / poolPrice
-                return (swapAmount * (poolPrice - oracleUpper)) / poolPrice;
             }
         }
 

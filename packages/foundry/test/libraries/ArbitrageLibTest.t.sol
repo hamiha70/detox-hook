@@ -16,7 +16,7 @@ contract ArbitrageLibTest is Test {
     uint256 constant RHO_BPS = 8000; // 80%
     
     /// @notice Test basic arbitrage detection with clear scenarios
-    function test_ArbitrageDetection_BasicScenarios() public {
+    function test_ArbitrageDetection_BasicScenarios() public pure {
         console.log("=== TEST: Basic Arbitrage Detection Logic ===");
         
         // Scenario 1: Pool overpaying (zeroForOne arbitrage)
@@ -93,7 +93,7 @@ contract ArbitrageLibTest is Test {
     }
     
     /// @notice Test hook share calculation
-    function test_HookShareCalculation() public {
+    function test_HookShareCalculation() public pure {
         console.log("=== TEST: Hook Share Calculation ===");
         
         uint256 arbitrageAmount = 1000 * PRECISION; // 1000 units of arbitrage
@@ -122,7 +122,7 @@ contract ArbitrageLibTest is Test {
     }
     
     /// @notice Test symmetric arbitrage detection
-    function test_SymmetricArbitrageDetection() public {
+    function test_SymmetricArbitrageDetection() public pure {
         console.log("=== TEST: Symmetric Arbitrage Detection ===");
         console.log("Same price difference should create arbitrage in one direction");
         
@@ -181,7 +181,7 @@ contract ArbitrageLibTest is Test {
     }
     
     /// @notice Test edge cases and error conditions
-    function test_EdgeCasesAndErrors() public {
+    function test_EdgeCasesAndErrors() public pure {
         console.log("=== TEST: Edge Cases and Error Conditions ===");
         
         // Test Case 1: Zero swap amount
@@ -229,7 +229,7 @@ contract ArbitrageLibTest is Test {
     }
     
     /// @notice Test realistic ETH/USDC scenario with correct decimals
-    function test_RealisticETHUSDCScenario() public {
+    function test_RealisticETHUSDCScenario() public pure {
         console.log("=== TEST: Realistic ETH/USDC Scenario ===");
         console.log("Simulates: ETH=$2500, USDC=$1.00, Pool=2000 USDC/ETH");
         
@@ -287,7 +287,7 @@ contract ArbitrageLibTest is Test {
     }
     
     /// @notice Test parameter validation
-    function test_ParameterValidation() public {
+    function test_ParameterValidation() public pure {
         console.log("=== TEST: Parameter Validation ===");
         
         // Valid parameters
@@ -327,7 +327,7 @@ contract ArbitrageLibTest is Test {
     }
     
     /// @notice Test the exact failing scenario from integration tests
-    function test_IntegrationTestFailureScenario() public {
+    function test_IntegrationTestFailureScenario() public pure {
         console.log("=== TEST: Integration Test Failure Scenario ===");
         console.log("Reproducing the exact scenario that shows asymmetric behavior");
         
