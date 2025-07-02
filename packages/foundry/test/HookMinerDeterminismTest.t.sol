@@ -6,7 +6,6 @@ import "forge-std/console.sol";
 import { HookMiner } from "@v4-periphery/src/utils/HookMiner.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { DetoxHookV2 } from "../src/DetoxHookV2.sol";
-import { HookMinerWithSeed } from "../src/libraries/HookMinerWithSeed.sol";
 import { Create2Deployer } from "../src/test-helpers/Create2Deployer.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { PriceRegistry } from "../src/PriceRegistry.sol";
@@ -187,221 +186,7 @@ contract HookMinerDeterminismTest is Test {
         console.log("[PASS] HookMiner performance test completed");
     }
     
-    /// @notice Test that HookMiner fails gracefully when no salt is found
-    function test_HookMinerFailure() public {
-        console.log("=== Testing HookMiner Failure Handling ===");
-        
-        // Use impossible flags that can't be satisfied
-        uint160 impossibleFlags = type(uint160).max; // All bits set - impossible to achieve
-        
-        bytes memory creationCode = type(DetoxHookV2).creationCode;
-        bytes memory constructorArgs = abi.encode(
-            address(0x1234),
-            address(0x5678), 
-            address(0x9ABC)
-        );
-        
-        console.log("Attempting to find salt for impossible flags:", impossibleFlags);
-        
-        // This should revert with "HookMiner: could not find salt"
-        vm.expectRevert();
-        HookMiner.find(CREATE2_DEPLOYER, impossibleFlags, creationCode, constructorArgs);
-        
-        console.log("[PASS] HookMiner correctly fails for impossible flags");
-    }
-    
-    /// @notice Test HookMinerWithSeed determinism for same seed
-    function test_HookMinerWithSeedDeterminism() public {
-        console.log("=== Testing HookMinerWithSeed Determinism ===");
-        
-        bytes memory creationCode = type(DetoxHookV2).creationCode;
-        bytes memory constructorArgs = abi.encode(
-            address(0x1234),
-            address(0x5678), 
-            address(0x9ABC),
-            address(0xDEF0)
-        );
-        
-        uint256 seed = 1000; // Test with seed 1000
-        
-        // Run multiple times with same seed
-        (address addr1, bytes32 salt1, uint256 actualSeed1) = HookMinerWithSeed.findWithSeed(
-            CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs, seed
-        );
-        (address addr2, bytes32 salt2, uint256 actualSeed2) = HookMinerWithSeed.findWithSeed(
-            CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs, seed
-        );
-        
-        console.log("=== Seed Determinism Results ===");
-        console.log("Seed:", seed);
-        console.log("Run 1 - Address:", addr1);
-        console.log("Run 1 - Salt:", uint256(salt1));
-        console.log("Run 1 - Actual seed:", actualSeed1);
-        console.log("Run 2 - Address:", addr2);
-        console.log("Run 2 - Salt:", uint256(salt2));
-        console.log("Run 2 - Actual seed:", actualSeed2);
-        
-        // Verify determinism
-        assertEq(addr1, addr2, "Same seed should produce same address");
-        assertEq(salt1, salt2, "Same seed should produce same salt");
-        assertEq(actualSeed1, actualSeed2, "Same seed should produce same actual seed");
-        
-        // Verify flags
-        assertEq(uint160(addr1) & HookMiner.FLAG_MASK, HOOK_FLAGS, "Address should have correct flags");
-        
-        console.log("[PASS] HookMinerWithSeed is deterministic for same seed");
-    }
-    
-    /// @notice Test HookMinerWithSeed produces different results for different seeds
-    function test_HookMinerWithSeedVariation() public {
-        console.log("=== Testing HookMinerWithSeed Seed Variation ===");
-        
-        bytes memory creationCode = type(DetoxHookV2).creationCode;
-        bytes memory constructorArgs = abi.encode(
-            address(0x1234),
-            address(0x5678), 
-            address(0x9ABC),
-            address(0xDEF0)
-        );
-        
-        // Test different seeds
-        uint256 seed1 = 0;
-        uint256 seed2 = 1000;
-        uint256 seed3 = 50000;
-        
-        (address addr1, bytes32 salt1, uint256 actualSeed1) = HookMinerWithSeed.findWithSeed(
-            CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs, seed1
-        );
-        (address addr2, bytes32 salt2, uint256 actualSeed2) = HookMinerWithSeed.findWithSeed(
-            CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs, seed2
-        );
-        (address addr3, bytes32 salt3, uint256 actualSeed3) = HookMinerWithSeed.findWithSeed(
-            CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs, seed3
-        );
-        
-        console.log("=== Seed Variation Results ===");
-        console.log("Seed 0 - Address:", addr1);
-        console.log("Seed 0 - Salt:", uint256(salt1));
-        console.log("Seed 0 - Actual:", actualSeed1);
-        console.log("Seed 1000 - Address:", addr2);
-        console.log("Seed 1000 - Salt:", uint256(salt2));
-        console.log("Seed 1000 - Actual:", actualSeed2);
-        console.log("Seed 50000 - Address:", addr3);
-        console.log("Seed 50000 - Salt:", uint256(salt3));
-        console.log("Seed 50000 - Actual:", actualSeed3);
-        
-        // Different seeds should produce different results
-        assertTrue(addr1 != addr2, "Seed 0 and 1000 should produce different addresses");
-        assertTrue(addr2 != addr3, "Seed 1000 and 50000 should produce different addresses");
-        assertTrue(addr1 != addr3, "Seed 0 and 50000 should produce different addresses");
-        
-        assertTrue(salt1 != salt2, "Seed 0 and 1000 should produce different salts");
-        assertTrue(salt2 != salt3, "Seed 1000 and 50000 should produce different salts");
-        assertTrue(salt1 != salt3, "Seed 0 and 50000 should produce different salts");
-        
-        // All should have correct flags
-        assertEq(uint160(addr1) & HookMiner.FLAG_MASK, HOOK_FLAGS, "Address 1 should have correct flags");
-        assertEq(uint160(addr2) & HookMiner.FLAG_MASK, HOOK_FLAGS, "Address 2 should have correct flags");
-        assertEq(uint160(addr3) & HookMiner.FLAG_MASK, HOOK_FLAGS, "Address 3 should have correct flags");
-        
-        console.log("[PASS] HookMinerWithSeed produces different results for different seeds");
-    }
-    
-    /// @notice Test batch seed finding
-    function test_HookMinerWithSeedBatch() public {
-        console.log("=== Testing HookMinerWithSeed Batch Operations ===");
-        
-        bytes memory creationCode = type(DetoxHookV2).creationCode;
-        bytes memory constructorArgs = abi.encode(
-            address(0x1234),
-            address(0x5678), 
-            address(0x9ABC),
-            address(0xDEF0)
-        );
-        
-        // Test batch with multiple seeds
-        uint256[] memory seeds = new uint256[](3);
-        seeds[0] = 0;
-        seeds[1] = 1000;
-        seeds[2] = 50000;
-        
-        HookMinerWithSeed.SeedResult[] memory results = HookMinerWithSeed.batchFindWithSeeds(
-            CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs, seeds
-        );
-        
-        console.log("=== Batch Results ===");
-        for (uint256 i = 0; i < results.length; i++) {
-            console.log("Seed:", results[i].seed);
-            console.log("Found:", results[i].found);
-            console.log("Address:", results[i].hookAddress);
-            console.log("Salt:", uint256(results[i].salt));
-            console.log("Actual seed:", results[i].actualSeed);
-            console.log("---");
-        }
-        
-        // All should be found
-        assertTrue(results[0].found, "Seed 0 should be found");
-        assertTrue(results[1].found, "Seed 1000 should be found");
-        assertTrue(results[2].found, "Seed 50000 should be found");
-        
-        // All should have correct flags
-        assertEq(uint160(results[0].hookAddress) & HookMiner.FLAG_MASK, HOOK_FLAGS, "Result 0 should have correct flags");
-        assertEq(uint160(results[1].hookAddress) & HookMiner.FLAG_MASK, HOOK_FLAGS, "Result 1 should have correct flags");
-        assertEq(uint160(results[2].hookAddress) & HookMiner.FLAG_MASK, HOOK_FLAGS, "Result 2 should have correct flags");
-        
-        // All should be different
-        assertTrue(results[0].hookAddress != results[1].hookAddress, "Results 0 and 1 should be different");
-        assertTrue(results[1].hookAddress != results[2].hookAddress, "Results 1 and 2 should be different");
-        assertTrue(results[0].hookAddress != results[2].hookAddress, "Results 0 and 2 should be different");
-        
-        console.log("[PASS] HookMinerWithSeed batch operations work correctly");
-    }
-    
-    /// @notice Test utility functions
-    function test_HookMinerWithSeedUtilities() public {
-        console.log("=== Testing HookMinerWithSeed Utility Functions ===");
-        
-        bytes memory creationCode = type(DetoxHookV2).creationCode;
-        bytes memory constructorArgs = abi.encode(
-            address(0x1234),
-            address(0x5678), 
-            address(0x9ABC),
-            address(0xDEF0)
-        );
-        
-        // Find an address
-        (address hookAddress, bytes32 salt, uint256 actualSeed) = HookMinerWithSeed.findWithSeed(
-            CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs, 0
-        );
-        
-        // Test validateFlags
-        bool valid = HookMinerWithSeed.validateFlags(hookAddress, HOOK_FLAGS);
-        assertTrue(valid, "Address should have valid flags");
-        
-        bool invalid = HookMinerWithSeed.validateFlags(hookAddress, uint160(Hooks.AFTER_SWAP_FLAG));
-        assertFalse(invalid, "Address should not have different flags");
-        
-        // Test getAddressFlags
-        uint160 flags = HookMinerWithSeed.getAddressFlags(hookAddress);
-        assertEq(flags, HOOK_FLAGS, "Should return correct flags");
-        
-        // Test computeAddressWithSeed
-        uint256 offset = actualSeed; // Use the offset that worked
-        (address computedAddress, bytes32 computedSalt) = HookMinerWithSeed.computeAddressWithSeed(
-            CREATE2_DEPLOYER, creationCode, constructorArgs, 0, offset
-        );
-        
-        assertEq(computedAddress, hookAddress, "Computed address should match");
-        assertEq(computedSalt, salt, "Computed salt should match");
-        
-        console.log("=== Utility Test Results ===");
-        console.log("Hook address:", hookAddress);
-        console.log("Flags valid:", valid);
-        console.log("Extracted flags:", flags);
-        console.log("Computed address matches:", computedAddress == hookAddress);
-        
-        console.log("[PASS] HookMinerWithSeed utility functions work correctly");
-    }
+
     
     /// @notice Test end-to-end hook deployment using CREATE2
     function test_EndToEndHookDeployment() public {
@@ -434,16 +219,12 @@ contract HookMinerDeterminismTest is Test {
         console.log("Constructor args length:", constructorArgs.length);
         console.log("Total bytecode length:", bytecode.length);
         
-        // Find a valid salt using HookMinerWithSeed
-        uint256 seed = 0;
-        (address predictedAddress, bytes32 salt, uint256 actualSeed) = HookMinerWithSeed.findWithSeed(
-            address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs, seed
-        );
+        // Find a valid salt using HookMiner with the actual deployer address
+        (address predictedAddress, bytes32 salt) = HookMiner.find(address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs);
         
         console.log("=== Mining Results ===");
         console.log("Predicted address:", predictedAddress);
         console.log("Salt:", uint256(salt));
-        console.log("Actual seed used:", actualSeed);
         console.log("Address flags:", uint160(predictedAddress) & HookMiner.FLAG_MASK);
         
         // Verify the predicted address has correct flags
@@ -503,9 +284,9 @@ contract HookMinerDeterminismTest is Test {
         console.log("[PASS] End-to-end hook deployment successful");
     }
     
-    /// @notice Test that we can redeploy with different seed
-    function test_RedeploymentWithDifferentSeed() public {
-        console.log("=== Testing Redeployment with Different Seed ===");
+    /// @notice Test that we can redeploy with different constructor args
+    function test_RedeploymentWithDifferentConstructorArgs() public {
+        console.log("=== Testing Redeployment with Different Constructor Args ===");
         
         // Deploy our CREATE2 deployer
         create2Deployer = new Create2Deployer();
@@ -527,21 +308,25 @@ contract HookMinerDeterminismTest is Test {
         );
         bytes memory bytecode = abi.encodePacked(creationCode, constructorArgs);
         
-        // Deploy first hook with seed 0
-        (address addr1, bytes32 salt1,) = HookMinerWithSeed.findWithSeed(
-            address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs, 0
-        );
+        // Deploy first hook
+        (address addr1, bytes32 salt1) = HookMiner.find(address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs);
         address deployed1 = create2Deployer.deploy(salt1, bytecode);
         
         console.log("First deployment:");
         console.log("  Address:", deployed1);
         console.log("  Salt:", uint256(salt1));
         
-        // Deploy second hook with seed 1000 (simulating redeployment scenario)
-        (address addr2, bytes32 salt2,) = HookMinerWithSeed.findWithSeed(
-            address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs, 1000
+        // Try to deploy second hook with different constructor args (simulating redeployment scenario)
+        bytes memory constructorArgs2 = abi.encode(
+            mockManager,
+            address(this), // owner
+            address(0x2223), // different oracle
+            address(priceRegistry)
         );
-        address deployed2 = create2Deployer.deploy(salt2, bytecode);
+        bytes memory bytecode2 = abi.encodePacked(creationCode, constructorArgs2);
+        
+        (address addr2, bytes32 salt2) = HookMiner.find(address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs2);
+        address deployed2 = create2Deployer.deploy(salt2, bytecode2);
         
         console.log("Second deployment:");
         console.log("  Address:", deployed2);
@@ -550,8 +335,8 @@ contract HookMinerDeterminismTest is Test {
         // Verify both deployments
         assertEq(deployed1, addr1, "First deployment should match prediction");
         assertEq(deployed2, addr2, "Second deployment should match prediction");
-        assertTrue(deployed1 != deployed2, "Different seeds should produce different addresses");
-        assertTrue(salt1 != salt2, "Different seeds should produce different salts");
+        assertTrue(deployed1 != deployed2, "Different constructor args should produce different addresses");
+        assertTrue(salt1 != salt2, "Different constructor args should produce different salts");
         
         // Both should have correct flags
         assertEq(uint160(deployed1) & HookMiner.FLAG_MASK, HOOK_FLAGS, "First hook should have correct flags");
@@ -566,7 +351,7 @@ contract HookMinerDeterminismTest is Test {
         assertEq(address(hook1.priceRegistry()), address(priceRegistry), "Hook1 price registry should be correct");
         assertEq(address(hook2.priceRegistry()), address(priceRegistry), "Hook2 price registry should be correct");
         
-        console.log("[PASS] Redeployment with different seed successful");
+        console.log("[PASS] Redeployment with different constructor args successful");
     }
     
     /// @notice Test deployment failure when contract already exists
@@ -590,9 +375,7 @@ contract HookMinerDeterminismTest is Test {
         bytes memory bytecode = abi.encodePacked(creationCode, constructorArgs);
         
         // Find salt and deploy first time
-        (address predictedAddress, bytes32 salt,) = HookMinerWithSeed.findWithSeed(
-            address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs, 0
-        );
+        (address predictedAddress, bytes32 salt) = HookMiner.find(address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs);
         address deployed1 = create2Deployer.deploy(salt, bytecode);
         
         console.log("First deployment successful at:", deployed1);
