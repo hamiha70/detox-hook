@@ -28,6 +28,7 @@ import { MockPyth } from "../src/libraries/PythMock.sol";
 import { PythStructs } from "../src/libraries/PythLibrary.sol";
 import { HookLibrary } from "../src/libraries/HookLibrary.sol";
 import { HookMiner } from "@v4-periphery/src/utils/HookMiner.sol";
+import { Create2Deployer } from "../src/test-helpers/Create2Deployer.sol";
 
 /**
  * @title DetoxHookV2Test
@@ -43,6 +44,7 @@ contract DetoxHookV2Test is Test, Deployers {
     DetoxHookV2 public hook;
     PriceRegistry public priceRegistry;
     MockPyth public mockOracle;
+    Create2Deployer public create2Deployer;
     
     // Pool configurations
     PoolKey public simplePoolKey;    // 1:1 TOK1/TOK2 pool
@@ -56,11 +58,14 @@ contract DetoxHookV2Test is Test, Deployers {
     
     // Hook deployment constants
     uint160 public constant HOOK_FLAGS = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
-    address public constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     
     // Pyth price IDs
     bytes32 constant ETH_USD_PRICE_ID = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
     bytes32 constant USDC_USD_PRICE_ID = 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
+    
+    // Test token price IDs (different from real ETH/USDC)
+    bytes32 constant TOK1_PRICE_ID = 0x1111111111111111111111111111111111111111111111111111111111111111;
+    bytes32 constant TOK2_PRICE_ID = 0x2222222222222222222222222222222222222222222222222222222222222222;
     
     // Test users
     address public alice = makeAddr("alice");
@@ -122,6 +127,10 @@ contract DetoxHookV2Test is Test, Deployers {
         deployFreshManagerAndRouters();
         console.log("[OK] Deployed PoolManager and routers");
         
+        // Deploy CREATE2 deployer for proper hook deployment
+        create2Deployer = new Create2Deployer();
+        console.log("[OK] Deployed CREATE2 deployer");
+        
         // Deploy mock oracle
         mockOracle = new MockPyth(60, 1); // 60 second validity, 1 wei fee
         console.log("[OK] Deployed MockPyth oracle");
@@ -130,8 +139,8 @@ contract DetoxHookV2Test is Test, Deployers {
         priceRegistry = new PriceRegistry(address(this));
         console.log("[OK] Deployed PriceRegistry");
         
-        // Deploy DetoxHookV2 using HookMiner for correct address
-        _deployDetoxHookV2WithHookMiner();
+        // Deploy DetoxHookV2 using proper CREATE2 deployment
+        _deployDetoxHookV2WithCreate2();
         console.log("[OK] Deployed DetoxHookV2 with correct permissions");
         
         // Fund the hook with ETH for Pyth oracle fees
@@ -147,9 +156,9 @@ contract DetoxHookV2Test is Test, Deployers {
         console.log("--- SETUP COMPLETE ---");
     }
 
-    /// @notice Deploy DetoxHookV2 using HookMiner and vm.etch for test environment
-    function _deployDetoxHookV2WithHookMiner() internal {
-        console.log("=== Mining Hook Address with HookMiner ===");
+    /// @notice Deploy DetoxHookV2 using proper CREATE2 deployment
+    function _deployDetoxHookV2WithCreate2() internal {
+        console.log("=== Deploying DetoxHookV2 with CREATE2 ===");
         console.log("Required flags:", HOOK_FLAGS);
         
         // Prepare creation code and constructor arguments
@@ -160,11 +169,12 @@ contract DetoxHookV2Test is Test, Deployers {
             address(mockOracle),
             address(priceRegistry)
         );
+        bytes memory bytecode = abi.encodePacked(creationCode, constructorArgs);
         
         // Mine the salt using HookMiner to find correct address
         address expectedAddress;
         bytes32 salt;
-        (expectedAddress, salt) = HookMiner.find(CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs);
+        (expectedAddress, salt) = HookMiner.find(address(create2Deployer), HOOK_FLAGS, creationCode, constructorArgs);
         
         console.log("=== HookMiner Results ===");
         console.log("Salt found:", uint256(salt));
@@ -173,27 +183,12 @@ contract DetoxHookV2Test is Test, Deployers {
         console.log("Required flags:", HOOK_FLAGS);
         console.log("Flags match:", (uint160(expectedAddress) & HookMiner.FLAG_MASK) == HOOK_FLAGS);
         
-        // For test environment, use vm.etch to place contract at mined address
-        // This avoids CREATE2 deployer availability issues in test environment
-        console.log("=== Deploying with vm.etch ===");
+        // Deploy using CREATE2
+        console.log("=== Deploying with CREATE2 ===");
+        address deployedAddress = create2Deployer.deploy(salt, bytecode);
         
-        // Deploy the contract normally first to get runtime bytecode
-        DetoxHookV2 tempHook = new DetoxHookV2(
-            manager,
-            address(this), // owner
-            address(mockOracle),
-            address(priceRegistry)
-        );
-        
-        // Get the runtime bytecode from the deployed contract
-        bytes memory runtimeBytecode = address(tempHook).code;
-        console.log("Runtime bytecode length:", runtimeBytecode.length);
-        
-        // Use vm.etch to place the contract at the correct address
-        vm.etch(expectedAddress, runtimeBytecode);
-        
-        // Create the hook instance at the correct address
-        hook = DetoxHookV2(payable(expectedAddress));
+        // Create the hook instance
+        hook = DetoxHookV2(payable(deployedAddress));
         
         console.log("=== Hook Deployed Successfully ===");
         console.log("Hook address:", address(hook));
@@ -201,6 +196,9 @@ contract DetoxHookV2Test is Test, Deployers {
         
         // Verify hook functionality
         require(address(hook.poolManager()) == address(manager), "Hook not connected to manager");
+        require(address(hook.priceRegistry()) == address(priceRegistry), "Hook not connected to price registry");
+        require(address(hook.pythOracle()) == address(mockOracle), "Hook not connected to oracle");
+        require(hook.owner() == address(this), "Hook owner not set correctly");
         
         Hooks.Permissions memory permissions = hook.getHookPermissions();
         require(permissions.beforeSwap, "beforeSwap permission not set");
@@ -223,8 +221,8 @@ contract DetoxHookV2Test is Test, Deployers {
         
         tokens[0] = Currency.unwrap(currency0);
         tokens[1] = Currency.unwrap(currency1);
-        priceIds[0] = ETH_USD_PRICE_ID;   // TOK1 -> ETH price feed
-        priceIds[1] = USDC_USD_PRICE_ID; // TOK2 -> USDC price feed
+        priceIds[0] = TOK1_PRICE_ID;   // TOK1 -> ETH price feed
+        priceIds[1] = TOK2_PRICE_ID; // TOK2 -> USDC price feed
         symbols[0] = "TOK1";
         symbols[1] = "TOK2";
         
@@ -312,18 +310,20 @@ contract DetoxHookV2Test is Test, Deployers {
         
         realisticPoolId = realisticPoolKey.toId();
         
-        // Calculate proper sqrtPrice for 1 ETH = 2500 USDC using proven legacy formula
+        // Calculate proper sqrtPrice for 1 ETH = 2500 USDC using safer calculations
         uint160 sqrtPriceX96;
         bool ethIsCurrency0 = (realisticCurrency0 == ethCurrency);
         
         if (ethIsCurrency0) {
-            // ETH is currency0, USDC is currency1: price = USDC/ETH = 2500 * 1e6
+            // ETH is currency0, USDC is currency1: price = USDC/ETH = 2500
+            // With 6 decimals for USDC: 2500 * 1e6 = 2500000000
             sqrtPriceX96 = HookLibrary.priceToSqrtPrice(2500 * 1e6);
             console.log("[OK] Pool setup: ETH->USDC ratio, price = 2500 * 1e6");
         } else {
-            // USDC is currency0, ETH is currency1: price = ETH/USDC = (1e12/2500) * 1e18
-            sqrtPriceX96 = HookLibrary.priceToSqrtPrice((1e12 * 1e18) / 2500);
-            console.log("[OK] Pool setup: USDC->ETH ratio, price = 5e26");
+            // USDC is currency0, ETH is currency1: price = ETH/USDC = 1/2500
+            // With 18 decimals for ETH and 6 for USDC: (1e18) / (2500 * 1e6) = 1e12 / 2500 = 4e8
+            sqrtPriceX96 = HookLibrary.priceToSqrtPrice(4e8);
+            console.log("[OK] Pool setup: USDC->ETH ratio, price = 4e8");
         }
         
         // Initialize pool

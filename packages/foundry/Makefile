@@ -142,6 +142,32 @@ deploy-detox-hook-arbitrum-sepolia:
 		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
 		-vvvv
 
+# Deploy DetoxHookV2 (current version) to Arbitrum Sepolia
+deploy-detox-hook-v2-arbitrum-sepolia:
+	@echo "🚀 DetoxHookV2 Deployment to Arbitrum Sepolia..."
+	@if [ -z "$(DEPLOYMENT_KEY)" ]; then \
+		echo "❌ Error: DEPLOYMENT_KEY environment variable is not set"; \
+		echo "   Please set your deployment private key with: export DEPLOYMENT_KEY=0x..."; \
+		exit 1; \
+	fi
+	@echo "📝 Using DEPLOYMENT_KEY for deployment"
+	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		--verify \
+		--verifier blockscout \
+		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
+		-vvvv
+
+# Test DetoxHookV2 deployment configuration (no broadcast)
+test-detox-hook-v2-deployment:
+	@echo "🧪 Testing DetoxHookV2 deployment configuration..."
+	@echo "📋 This will validate deployment parameters without broadcasting"
+	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
+		--sig "testDeploymentConfig()" \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		-vvvv
+
 # Initialize pools after hook deployment
 initialize-pools-arbitrum-sepolia:
 	@echo "🏊 Initializing ETH/USDC pools on Arbitrum Sepolia..."
