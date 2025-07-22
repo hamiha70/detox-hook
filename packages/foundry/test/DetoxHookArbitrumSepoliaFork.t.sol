@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import {DetoxHook} from "../src/DetoxHook.sol";
+import {DetoxHookV2} from "../src/DetoxHookV2.sol";
 import {PriceRegistry} from "../src/PriceRegistry.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
@@ -46,7 +46,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
     uint160 constant HOOK_FLAGS = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
     
     // Test contracts
-    DetoxHook public hook;
+    DetoxHookV2 public hook;
     IPoolManager public manager;
     PoolSwapTest public swapRouter;
     PoolModifyLiquidityTest public modifyLiquidityRouter;
@@ -118,7 +118,8 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         poolId = poolKey.toId();
         
         // Configure MockPriceRegistry with the actual token addresses
-        MockPriceRegistry mockRegistry = MockPriceRegistry(hook.getPriceRegistry());
+        // We need to access the mock registry that was passed to the hook constructor
+        MockPriceRegistry mockRegistry = MockPriceRegistry(address(hook.priceRegistry()));
         mockRegistry.setTokenAddresses(address(mockWETH), address(mockUSDC));
         console.log("MockPriceRegistry configured with WETH:", address(mockWETH));
         console.log("MockPriceRegistry configured with USDC:", address(mockUSDC));
@@ -154,12 +155,10 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         // This will be set later in setUp() after we know the token addresses
         
         // Prepare creation code and constructor arguments (4 parameters now)
-        bytes memory creationCode = type(DetoxHook).creationCode;
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
         bytes memory constructorArgs = abi.encode(
             address(manager), 
-            address(this), 
-            0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF, // Pyth oracle
-            address(mockRegistry)                        // PriceRegistry
+            address(mockRegistry) // PriceRegistry
         );
         
         // Mine the salt using HookMiner
@@ -189,7 +188,7 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         address deployedAddress = address(bytes20(returnData));
         require(deployedAddress == expectedAddress, "Deployment address mismatch");
         
-        hook = DetoxHook(payable(deployedAddress));
+        hook = DetoxHookV2(payable(deployedAddress));
         
         console.log("=== Hook Deployed Successfully ===");
         console.log("Hook address:", address(hook));

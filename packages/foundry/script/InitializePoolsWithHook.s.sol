@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import { DetoxHook } from "../src/DetoxHook.sol";
+import { DetoxHookV2 } from "../src/DetoxHookV2.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -42,7 +42,7 @@ contract InitializePoolsWithHook is Script {
     uint256 constant MIN_USDC_BALANCE = 2e6; // Minimum 2 USDC for liquidity
     
     // Contract instances
-    DetoxHook public hook;
+    DetoxHookV2 public hook;
     IPoolManager public poolManager;
     PoolModifyLiquidityTest public modifyLiquidityRouter;
     IERC20Minimal public usdc;
@@ -197,7 +197,7 @@ contract InitializePoolsWithHook is Script {
         console.log("  Hook:", hookAddress);
         
         // Initialize contract instances
-        hook = DetoxHook(hookAddress);
+        hook = DetoxHookV2(hookAddress);
         poolManager = IPoolManager(poolManagerAddress);
         usdc = IERC20Minimal(usdcAddress);
         

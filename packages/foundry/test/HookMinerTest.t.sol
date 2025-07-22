@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import {DetoxHook} from "../src/DetoxHook.sol";
+import {DetoxHookV2} from "../src/DetoxHookV2.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {HookMiner} from "@v4-periphery/src/utils/HookMiner.sol";
@@ -28,8 +28,8 @@ contract HookMinerTest is Test {
         console.log("CREATE2 Deployer:", CREATE2_DEPLOYER);
         
         // Prepare creation code and constructor arguments
-        bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(MOCK_POOL_MANAGER));
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
+        bytes memory constructorArgs = abi.encode(IPoolManager(MOCK_POOL_MANAGER), address(0)); // PriceRegistry placeholder
         
         console.log("Creation code length:", creationCode.length);
         console.log("Constructor args length:", constructorArgs.length);
@@ -65,8 +65,8 @@ contract HookMinerTest is Test {
         uint256 testSalt = 12345;
         
         // Prepare creation code with constructor arguments
-        bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(MOCK_POOL_MANAGER));
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
+        bytes memory constructorArgs = abi.encode(IPoolManager(MOCK_POOL_MANAGER), address(0)); // PriceRegistry placeholder
         bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
         
         // Compute address
@@ -90,8 +90,8 @@ contract HookMinerTest is Test {
         console.log("=== Testing HookMiner Consistency ===");
         
         // Prepare creation code and constructor arguments
-        bytes memory creationCode = type(DetoxHook).creationCode;
-        bytes memory constructorArgs = abi.encode(IPoolManager(MOCK_POOL_MANAGER));
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
+        bytes memory constructorArgs = abi.encode(IPoolManager(MOCK_POOL_MANAGER), address(0)); // PriceRegistry placeholder
         
         // Find salt using HookMiner
         (address expectedAddress, bytes32 salt) = HookMiner.find(

@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
-import { DetoxHook } from "../src/DetoxHook.sol";
+import { DetoxHookV2 } from "../src/DetoxHookV2.sol";
 import { PriceRegistry } from "../src/PriceRegistry.sol";
 
 // Uniswap V4 Core imports
@@ -45,7 +45,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
     uint160 constant HOOK_FLAGS = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
 
     // Contracts
-    DetoxHook public detoxHook;
+    DetoxHookV2 public detoxHook;
     MockPyth public mockOracle;
 
     // Pool configuration
@@ -79,8 +79,8 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         MockPriceRegistry mockRegistry = new MockPriceRegistry(address(this));
         
         // Use 4-parameter constructor (poolManager, owner, oracle, priceRegistry)
-        deployCodeTo("DetoxHook.sol", abi.encode(manager, address(this), address(mockOracle), address(mockRegistry)), hookAddress);
-        detoxHook = DetoxHook(payable(hookAddress));
+        deployCodeTo("DetoxHookV2.sol", abi.encode(manager, address(mockRegistry)), hookAddress);
+        detoxHook = DetoxHookV2(payable(hookAddress));
 
         // Create pool key
         poolKey = PoolKey({

@@ -58,10 +58,11 @@ update-frontend-address:
 # Deploy and generate ABIs
 deploy-and-generate-abis: deploy generate-abis
 
-# Deploy DetoxHook Complete (all-in-one deployment)
+# Deploy DetoxHookV2 Complete (production deployment with all components)
 deploy-detox-complete:
-	@echo "🚀 Complete DetoxHook Deployment..."
-	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+	@echo "🚀 Complete DetoxHookV2 Deployment..."
+	@echo "⚠️  Note: Using DetoxHookV2.s.sol - the production-ready deployment script"
+	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
 		--rpc-url $(RPC_URL) \
 		--broadcast \
 		--verify \
@@ -69,10 +70,11 @@ deploy-detox-complete:
 		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
 		-vvvv
 
-# Deploy DetoxHook Complete to Arbitrum Sepolia
+# Deploy DetoxHookV2 Complete to Arbitrum Sepolia
 deploy-detox-complete-arbitrum-sepolia:
-	@echo "🚀 Complete DetoxHook Deployment to Arbitrum Sepolia..."
-	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+	@echo "🚀 Complete DetoxHookV2 Deployment to Arbitrum Sepolia..."
+	@echo "⚠️  Note: Using DetoxHookV2.s.sol - the production-ready deployment script"
+	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		--broadcast \
 		--verify \
@@ -80,18 +82,18 @@ deploy-detox-complete-arbitrum-sepolia:
 		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
 		-vvvv
 
-# Test DetoxHook Complete deployment on fork
+# Test DetoxHookV2 Complete deployment on fork
 test-detox-complete-fork:
-	@echo "🧪 Testing DetoxHook Complete deployment on Arbitrum Sepolia fork..."
-	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+	@echo "🧪 Testing DetoxHookV2 Complete deployment on Arbitrum Sepolia fork..."
+	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
 		--fork-url https://sepolia-rollup.arbitrum.io/rpc \
 		--broadcast \
 		-vvvv
 
-# Dry run DetoxHook Complete deployment (no broadcast)
+# Dry run DetoxHookV2 Complete deployment (no broadcast)
 dry-run-detox-complete:
-	@echo "🔍 Dry run DetoxHook Complete deployment..."
-	forge script script/DeployDetoxHookComplete.s.sol:DeployDetoxHookComplete \
+	@echo "🔍 Dry run DetoxHookV2 Complete deployment..."
+	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		-vvvv
 
@@ -131,9 +133,11 @@ test:
 verify:
 	forge script script/VerifyAll.s.sol --ffi --rpc-url $(RPC_URL)
 
-# Deploy DetoxHook (simple version) to Arbitrum Sepolia
+# Deploy DetoxHook (legacy - use deploy-detox-hook-v2-arbitrum-sepolia instead)
 deploy-detox-hook-arbitrum-sepolia:
-	@echo "🚀 Simple DetoxHook Deployment to Arbitrum Sepolia..."
+	@echo "⚠️  WARNING: This target uses legacy deployment script!"
+	@echo "⚠️  Please use 'make deploy-detox-hook-v2-arbitrum-sepolia' for production deployment"
+	@echo "🚀 Legacy DetoxHook Deployment to Arbitrum Sepolia..."
 	forge script script/DeployDetoxHook.s.sol:DeployDetoxHook \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		--broadcast \
@@ -188,16 +192,16 @@ deploy-pool-registry-arbitrum-sepolia:
 		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
 		-vvvv
 
-# Initialize pools with existing DetoxHook (based on DeployDetoxHookComplete.s.sol)
+# Initialize pools with existing DetoxHookV2 (production version)
 initialize-pools-with-hook-arbitrum-sepolia:
-	@echo "🏊 Initializing ETH/USDC pools with existing DetoxHook on Arbitrum Sepolia..."
+	@echo "🏊 Initializing ETH/USDC pools with existing DetoxHookV2 on Arbitrum Sepolia..."
 	@echo "Make sure to set HOOK_ADDRESS environment variable first!"
 	@if [ -z "$(HOOK_ADDRESS)" ]; then \
 		echo "❌ Error: HOOK_ADDRESS environment variable is not set"; \
 		echo "   Please set your hook address with: export HOOK_ADDRESS=0x..."; \
 		exit 1; \
 	fi
-	forge script script/InitializePoolsWithHook.s.sol:InitializePoolsWithHook \
+	forge script script/InitializePools.s.sol:InitializePools \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		--broadcast \
 		-vvvv
@@ -231,11 +235,11 @@ swap-router:
 # Test commands for rapid development
 test-fast:
 	@echo "🚀 Running fast tests (unit + integration only)..."
-	@forge test --match-contract "DetoxHookTest|ArbitrageLibTest|OracleLibTest|SwapRouterTest|SwapRouterIntegrationTest" -vv
+	@forge test --match-contract "DetoxHookV2Test|ArbitrageLibTest|OracleLibTest|SwapRouterIntegrationTest|PriceRegistryTest" -vv
 
 test-core:
 	@echo "🔧 Running core hook tests only..."
-	@forge test --match-contract "DetoxHookTest" -vv
+	@forge test --match-contract "DetoxHookV2Test|DetoxHookArbitrumSepoliaFork" -vv
 
 test-libs:
 	@echo "📚 Running library tests only..."
@@ -243,7 +247,7 @@ test-libs:
 
 test-integration:
 	@echo "🔗 Running integration tests only..."
-	@forge test --match-contract "SwapRouterTest|SwapRouterIntegrationTest" -vv
+	@forge test --match-contract "SwapRouterIntegrationTest|PriceRegistryTest" -vv
 
 test-deployment:
 	@echo "🚀 Running deployment tests only..."

@@ -19,7 +19,7 @@ import { PoolModifyLiquidityTest } from "@uniswap/v4-core/src/test/PoolModifyLiq
 import { PoolSwapTest } from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import { ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
-import { DetoxHook } from "../src/DetoxHook.sol";
+import { DetoxHookV2 } from "../src/DetoxHookV2.sol";
 import { ChainAddresses } from "./ChainAddresses.sol";
 import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
 import { DevOpsTools } from "foundry-devops/src/DevOpsTools.sol";
@@ -61,7 +61,7 @@ contract DeployDetoxHookComplete is Script {
     uint256 constant MIN_USDC_BALANCE = 10e6; // Minimum 10 USDC for liquidity
     
     // Contract instances
-    DetoxHook public hook;
+    DetoxHookV2 public hook;
     IPoolManager public poolManager;
     PoolModifyLiquidityTest public modifyLiquidityRouter;
     IERC20Minimal public usdc;
@@ -305,7 +305,7 @@ contract DeployDetoxHookComplete is Script {
         }
         
         // Deploy the hook using CREATE2
-        try this._deployDetoxHookWithSaltExternal(salt) returns (DetoxHook deployedHook) {
+        try this._deployDetoxHookWithSaltExternal(salt) returns (DetoxHookV2 deployedHook) {
             hook = deployedHook;
             console.log("Hook deployment successful");
         } catch Error(string memory reason) {
@@ -341,7 +341,7 @@ contract DeployDetoxHookComplete is Script {
     }
     
     /// @notice External wrapper for hook deployment (for try-catch)
-    function _deployDetoxHookWithSaltExternal(bytes32 salt) external returns (DetoxHook) {
+    function _deployDetoxHookWithSaltExternal(bytes32 salt) external returns (DetoxHookV2) {
         return _deployDetoxHookWithSalt(salt);
     }
     
@@ -358,11 +358,10 @@ contract DeployDetoxHookComplete is Script {
         console.log("Mining for address with correct flag bits...");
         
         // Prepare creation code with constructor arguments
-        bytes memory creationCode = type(DetoxHook).creationCode;
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
         bytes memory constructorArgs = abi.encode(
             poolManager,
-            deployer,
-            ChainAddresses.getPythOracle(block.chainid)
+            address(0) // priceRegistry placeholder - will be set later
         );
         
         console.log("Constructor arguments:");
@@ -385,15 +384,14 @@ contract DeployDetoxHookComplete is Script {
     }
     
     /// @notice Deploy DetoxHook using CREATE2 with the given salt
-    function _deployDetoxHookWithSalt(bytes32 salt) internal returns (DetoxHook) {
+    function _deployDetoxHookWithSalt(bytes32 salt) internal returns (DetoxHookV2) {
         console.log("=== CREATE2 Deployment ===");
         
         // Prepare deployment data
-        bytes memory creationCode = type(DetoxHook).creationCode;
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
         bytes memory constructorArgs = abi.encode(
             poolManager,
-            deployer,
-            ChainAddresses.getPythOracle(block.chainid)
+            address(0) // priceRegistry placeholder
         );
         bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
         
@@ -467,7 +465,7 @@ contract DeployDetoxHookComplete is Script {
         console.log("Contract deployed at:", deployedAddress);
         console.log("Contract code size:", deployedAddress.code.length, "bytes");
         
-        return DetoxHook(payable(deployedAddress));
+        return DetoxHookV2(payable(deployedAddress));
     }
     
     /// @notice Validate the deployed DetoxHook
