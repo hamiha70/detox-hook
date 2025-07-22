@@ -304,35 +304,42 @@ contract DeployDetoxHookComplete is Script {
             revert("Hook deployment failed: unable to mine valid salt for hook address");
         }
         
+        // Calculate expected DetoxHook address
+        address expectedHookAddress = HookMiner.computeAddress(
+            CREATE2_DEPLOYER,
+            uint256(salt),
+            abi.encodePacked(
+                type(DetoxHookV2).creationCode,
+                abi.encode(
+                    poolManager,
+                    deployer,
+                    ChainAddresses.getPythOracle(block.chainid),
+                    address(0) // priceRegistry placeholder
+                )
+            )
+        );
+        console.log("Expected DetoxHook address:", expectedHookAddress);
+        
+        // Check if DetoxHook is already deployed at the expected address
+        if (expectedHookAddress.code.length > 0) {
+            console.log("[SKIP] DetoxHook already deployed at:", expectedHookAddress);
+            hook = DetoxHookV2(payable(expectedHookAddress));
+            return;
+        } else {
+            console.log("[DEPLOY] Deploying new DetoxHook...");
+        }
+        
         // Deploy the hook using CREATE2
         try this._deployDetoxHookWithSaltExternal(salt) returns (DetoxHookV2 deployedHook) {
             hook = deployedHook;
             console.log("Hook deployment successful");
         } catch Error(string memory reason) {
             console.log("[ERROR] Hook deployment failed:", reason);
-            revert(string.concat("Hook deployment failed: ", reason));
+            revert(string(abi.encodePacked("Hook deployment failed: ", reason)));
         } catch {
-            console.log("[ERROR] Hook deployment failed with unknown error");
-            revert("Hook deployment failed: unknown error during CREATE2 deployment");
+            console.log("[ERROR] Hook deployment failed: unknown error");
+            revert("Hook deployment failed: unknown error");
         }
-        
-        // Validate deployment
-        try this._validateHookDeploymentExternal() {
-            console.log("Hook validation successful");
-        } catch Error(string memory reason) {
-            console.log("[ERROR] Hook validation failed:", reason);
-            revert(string.concat("Hook deployment failed validation: ", reason));
-        } catch {
-            console.log("[ERROR] Hook validation failed with unknown error");
-            revert("Hook deployment failed: validation error");
-        }
-        
-        console.log("");
-        console.log("[SUCCESS] DetoxHook deployed successfully!");
-        console.log("[ADDRESS] DetoxHook Address:", address(hook));
-        console.log("");
-        
-        emit DetoxHookDeployed(address(hook), salt, block.chainid);
     }
     
     /// @notice External wrapper for salt mining (for try-catch)
@@ -732,16 +739,15 @@ contract DeployDetoxHookComplete is Script {
         } else {
             require(poolSwapTest != address(0), "PoolSwapTest address not set for this chain");
         }
-        address detoxHook;
-        if (block.chainid == 31337) {
-            detoxHook = address(hook); // Use in-memory deployed address
-        } else {
-            detoxHook = DevOpsTools.get_most_recent_deployment("DetoxHook", block.chainid);
-            require(detoxHook != address(0), "DetoxHook address not found");
-        }
+        
+        // Use the hook address from the current deployment
+        address detoxHook = address(hook);
+        require(detoxHook != address(0), "DetoxHook address not found");
+        
         PoolKey memory poolKey = PoolParameters.getPoolKey1(block.chainid, detoxHook, address(usdc));
         swapRouterFixedInstance = new SwapRouterFixed(poolSwapTest, poolKey);
         console.log("SwapRouterFixed deployed at:", address(swapRouterFixedInstance));
+        
         // Verify configuration
         PoolKey memory deployedPoolKey = swapRouterFixedInstance.getPoolConfiguration();
         console.log("Verified pool configuration:");

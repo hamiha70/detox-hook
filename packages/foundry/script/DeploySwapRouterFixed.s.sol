@@ -1,68 +1,136 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
-import {Script, console} from "forge-std/Script.sol";
-import {SwapRouterFixed} from "../src/SwapRouterFixed.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import "forge-std/Script.sol";
+import "forge-std/console.sol";
+import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
+import { PoolId, PoolIdLibrary } from "@uniswap/v4-core/src/types/PoolId.sol";
+import { Currency, CurrencyLibrary } from "@uniswap/v4-core/src/types/Currency.sol";
+import { PoolSwapTest } from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 
-/// @title DeploySwapRouterFixed
-/// @notice Deploy a fixed SwapRouter with proper TickMath price limits
+import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
+import { ChainAddresses } from "./ChainAddresses.sol";
+import { PoolParameters } from "./PoolParameters.sol";
+
+/// @title SwapRouterFixed Deployment Script
+/// @notice Standalone script to deploy SwapRouterFixed for DetoxHook demo
 contract DeploySwapRouterFixed is Script {
+    using ChainAddresses for uint256;
+    using CurrencyLibrary for Currency;
+    using PoolIdLibrary for PoolKey;
+
+    // Contract instances
+    SwapRouterFixed public swapRouterFixedInstance;
+    IPoolManager public poolManager;
     
-    // Arbitrum Sepolia addresses (properly checksummed)
-    address constant POOL_SWAP_TEST = 0x9A8ca723F5dcCb7926D00B71deC55c2fEa1F50f7;
-    address constant ETH_ADDRESS = 0x0000000000000000000000000000000000000000;
-    address constant USDC_ADDRESS = 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d;
-    address constant DETOX_HOOK = 0x444F320aA27e73e1E293c14B22EfBDCbce0e0088;
+    // Deployment state
+    address public deployer;
     
+    /// @notice Main deployment function
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
+        // Get deployer private key
+        uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY_421614");
+        deployer = vm.addr(deployerPrivateKey);
+        
+        console.log("=== SwapRouterFixed Deployment ===");
+        console.log("Chain ID:", block.chainid);
+        console.log("Deployer:", deployer);
+        
+        // Initialize contracts
+        _initializeContracts();
         
         vm.startBroadcast(deployerPrivateKey);
         
-        // Create pool key for ETH/USDC with 0.05% fee
-        PoolKey memory poolKey = PoolKey({
-            currency0: Currency.wrap(ETH_ADDRESS),
-            currency1: Currency.wrap(USDC_ADDRESS),
-            fee: 500,  // 0.05%
-            tickSpacing: 10,
-            hooks: IHooks(DETOX_HOOK)
-        });
+        // Deploy SwapRouterFixed
+        _deploySwapRouterFixed();
         
-        console.log("Deploying SwapRouterFixed...");
-        console.log("PoolSwapTest:", POOL_SWAP_TEST);
-        console.log("ETH Address:", ETH_ADDRESS);
-        console.log("USDC Address:", USDC_ADDRESS);
-        console.log("DetoxHook:", DETOX_HOOK);
-        console.log("Fee:", poolKey.fee);
-        console.log("TickSpacing:", poolKey.tickSpacing);
+        vm.stopBroadcast();
         
-        // Deploy the fixed SwapRouter
-        SwapRouterFixed swapRouterFixed = new SwapRouterFixed(
-            POOL_SWAP_TEST,
-            poolKey
-        );
+        // Log deployment summary
+        _logDeploymentSummary();
+    }
+    
+    /// @notice Initialize contract addresses
+    function _initializeContracts() internal {
+        console.log("=== Contract Initialization ===");
         
-        console.log("SwapRouterFixed deployed at:", address(swapRouterFixed));
+        // Get PoolManager address
+        poolManager = IPoolManager(ChainAddresses.getPoolManager(block.chainid));
+        console.log("Pool Manager:", address(poolManager));
         
-        // Verify the configuration
-        PoolKey memory deployedPoolKey = swapRouterFixed.getPoolConfiguration();
-        console.log("Verified pool configuration:");
+        // Verify PoolManager exists
+        require(address(poolManager).code.length > 0, "PoolManager not found");
+        console.log("PoolManager verified");
+    }
+    
+    /// @notice Deploy SwapRouterFixed
+    function _deploySwapRouterFixed() internal {
+        console.log("=== Deploying SwapRouterFixed ===");
+        
+        // Get PoolSwapTest address
+        address poolSwapTest = ChainAddresses.getPoolSwapTest(block.chainid);
+        require(poolSwapTest != address(0), "PoolSwapTest address not set for this chain");
+        console.log("PoolSwapTest:", poolSwapTest);
+        
+        // Get DetoxHook address (hardcoded for this deployment)
+        address detoxHook = 0x07Fae0457E31b0047363d63ac3Dc3e446abf0088;
+        require(detoxHook != address(0), "DetoxHook address not found");
+        console.log("DetoxHook:", detoxHook);
+        
+        // Get USDC address
+        address usdc = ChainAddresses.getUSDC(block.chainid);
+        require(usdc != address(0), "USDC address not set for this chain");
+        console.log("USDC:", usdc);
+        
+        // Create pool key
+        PoolKey memory poolKey = PoolParameters.getPoolKey1(block.chainid, detoxHook, usdc);
+        console.log("Pool Key created:");
+        console.log("  Currency0:", Currency.unwrap(poolKey.currency0));
+        console.log("  Currency1:", Currency.unwrap(poolKey.currency1));
+        console.log("  Fee:", poolKey.fee);
+        console.log("  TickSpacing:", poolKey.tickSpacing);
+        console.log("  Hooks:", address(poolKey.hooks));
+        
+        // Deploy SwapRouterFixed
+        swapRouterFixedInstance = new SwapRouterFixed(poolSwapTest, poolKey);
+        console.log("SwapRouterFixed deployed at:", address(swapRouterFixedInstance));
+        
+        // Verify configuration
+        PoolKey memory deployedPoolKey = swapRouterFixedInstance.getPoolConfiguration();
+        console.log("Configuration verified:");
         console.log("  Currency0:", Currency.unwrap(deployedPoolKey.currency0));
         console.log("  Currency1:", Currency.unwrap(deployedPoolKey.currency1));
         console.log("  Fee:", deployedPoolKey.fee);
         console.log("  TickSpacing:", deployedPoolKey.tickSpacing);
         console.log("  Hooks:", address(deployedPoolKey.hooks));
         
-        vm.stopBroadcast();
+        require(address(deployedPoolKey.hooks) == detoxHook, "SwapRouterFixed not configured with correct DetoxHook");
+        console.log("SwapRouterFixed configuration verified successfully");
+    }
+    
+    /// @notice Log deployment summary
+    function _logDeploymentSummary() internal view {
+        console.log("");
+        console.log("===============================================");
+        console.log("        SWAPROUTERFIXED DEPLOYED!            ");
+        console.log("===============================================");
+        console.log("");
+        console.log("[SWAPROUTERFIXED ADDRESS]:", address(swapRouterFixedInstance));
+        console.log("");
         
-        console.log("\n=== Deployment Summary ===");
-        console.log("SwapRouterFixed:", address(swapRouterFixed));
-        console.log("Network: Arbitrum Sepolia");
-        console.log("Fixed: Uses TickMath.MIN_SQRT_PRICE + 1 and TickMath.MAX_SQRT_PRICE - 1");
-        console.log("\nTo use the fixed router, update your frontend to use this address:");
-        console.log(address(swapRouterFixed));
+        console.log("=== Deployment Summary ===");
+        console.log("Chain:", ChainAddresses.getChainName(block.chainid));
+        console.log("Chain ID:", block.chainid);
+        console.log("Deployer:", deployer);
+        console.log("SwapRouterFixed:", address(swapRouterFixedInstance));
+        console.log("Pool Manager:", address(poolManager));
+        
+        console.log("");
+        console.log("=== Demo Ready ===");
+        console.log("You can now test the demo with:");
+        console.log("yarn swap-router --getpool");
+        console.log("yarn swap-router --swap 0.00002 false");
+        console.log("");
     }
 } 
