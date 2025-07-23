@@ -46,26 +46,26 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
         MockERC20 token1 = MockERC20(Currency.unwrap(currency1));
         
-        // Mint sufficient tokens (determine amounts based on which is which)
+        // Use much smaller amounts for fork testing (similar to DetoxHookV2Test success pattern)
         if (token0.decimals() == 18) {
             // token0 is WETH, token1 is USDC
-            token0.mint(address(this), 10 ether);      // 10 WETH
-            token1.mint(address(this), 25000e6);       // 25,000 USDC
+            token0.mint(address(this), 1 ether);       // 1 WETH (reduced from 10)
+            token1.mint(address(this), 2500e6);        // 2,500 USDC (reduced from 25,000)
         } else {
             // token0 is USDC, token1 is WETH  
-            token0.mint(address(this), 25000e6);       // 25,000 USDC
-            token1.mint(address(this), 10 ether);      // 10 WETH
+            token0.mint(address(this), 2500e6);        // 2,500 USDC (reduced from 25,000)
+            token1.mint(address(this), 1 ether);       // 1 WETH (reduced from 10)
         }
         
         // Approve the modify liquidity router
         token0.approve(address(modifyLiquidityRouter), type(uint256).max);
         token1.approve(address(modifyLiquidityRouter), type(uint256).max);
         
-        // Add liquidity in a wide range
+        // Use much smaller tick range and liquidity amount (proven pattern from DetoxHookV2Test)
         ModifyLiquidityParams memory params = ModifyLiquidityParams({
-            tickLower: -600,
-            tickUpper: 600,
-            liquidityDelta: int256(1e18), // 1 unit of liquidity
+            tickLower: -60,                      // Much smaller range (was -600)
+            tickUpper: 60,                       // Much smaller range (was 600)  
+            liquidityDelta: int256(1000000),     // Much smaller amount (was 1e18)
             salt: bytes32(0)
         });
         
@@ -90,16 +90,16 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         // Fund users with tokens for testing
         if (token0.decimals() == 18) {
             // token0 is WETH, token1 is USDC
-            token0.mint(user1, 1 ether);      // 1 WETH to user1
-            token1.mint(user1, 5000e6);       // 5,000 USDC to user1
-            token0.mint(user2, 1 ether);      // 1 WETH to user2
-            token1.mint(user2, 5000e6);       // 5,000 USDC to user2
+            token0.mint(user1, 0.1 ether);    // 0.1 WETH to user1 (reduced from 1)
+            token1.mint(user1, 250e6);        // 250 USDC to user1 (reduced from 5000)
+            token0.mint(user2, 0.1 ether);    // 0.1 WETH to user2 (reduced from 1)
+            token1.mint(user2, 250e6);        // 250 USDC to user2 (reduced from 5000)
         } else {
             // token0 is USDC, token1 is WETH
-            token0.mint(user1, 5000e6);       // 5,000 USDC to user1
-            token1.mint(user1, 1 ether);      // 1 WETH to user1
-            token0.mint(user2, 5000e6);       // 5,000 USDC to user2
-            token1.mint(user2, 1 ether);      // 1 WETH to user2
+            token0.mint(user1, 250e6);        // 250 USDC to user1 (reduced from 5000)
+            token1.mint(user1, 0.1 ether);    // 0.1 WETH to user1 (reduced from 1)
+            token0.mint(user2, 250e6);        // 250 USDC to user2 (reduced from 5000)
+            token1.mint(user2, 0.1 ether);    // 0.1 WETH to user2 (reduced from 1)
         }
         
         console.log("=== Test Users Setup Complete ===");
@@ -241,7 +241,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         SwapParams memory params = SwapParams({
             zeroForOne: true,
             amountSpecified: -1000, // Exact input of 1000 units of token0
-            sqrtPriceLimitX96: 0 // No price limit
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1 // Proper price limit (was 0)
         });
         
         // Execute swap
@@ -313,10 +313,11 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         
         // Perform multiple small swaps
         for (uint i = 0; i < 3; i++) {
+            bool zeroForOne = i % 2 == 0; // Alternate direction
             SwapParams memory params = SwapParams({
-                zeroForOne: i % 2 == 0, // Alternate direction
+                zeroForOne: zeroForOne,
                 amountSpecified: -500, // Small exact input
-                sqrtPriceLimitX96: 0
+                sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1 // Proper price limits
             });
             
             PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({
