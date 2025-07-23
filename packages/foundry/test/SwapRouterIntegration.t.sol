@@ -113,7 +113,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         assertTrue(address(swapRouter) != address(0), "PoolSwapTest should be deployed");
         
         // Verify pool is properly configured
-        (uint160 sqrtPriceX96, int24 tick,,) = manager.getSlot0(poolId);
+        (uint160 sqrtPriceX96, ,,) = StateLibrary.getSlot0(manager, poolId);
         assertTrue(sqrtPriceX96 > 0, "Pool should be initialized");
         
         // Verify hook is properly connected
@@ -191,7 +191,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         });
 
         // Execute swap using PoolSwapTest directly
-        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, emptyUpdateData);
+        /*BalanceDelta delta = */swapRouter.swap(poolKey, swapParams, testSettings, emptyUpdateData);
 
         // Verify balances changed
         uint256 balance0After = MockERC20(Currency.unwrap(currency0)).balanceOf(swapper);
@@ -250,7 +250,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         });
 
         // Execute swap
-        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, emptyUpdateData);
+        /*BalanceDelta delta = */swapRouter.swap(poolKey, swapParams, testSettings, emptyUpdateData);
 
         // Verify balances changed
         uint256 balance0After = MockERC20(Currency.unwrap(currency0)).balanceOf(swapper);
@@ -310,7 +310,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         });
 
         // Execute swap with hook data
-        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        /*BalanceDelta delta = */swapRouter.swap(poolKey, swapParams, testSettings, hookData);
 
         // Verify hook was called (balance might change if hook processes fees)
         uint256 hookBalanceAfter = address(detoxHook).balance;
@@ -475,7 +475,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         });
 
         // Execute large swap that might trigger MEV detection
-        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        /*BalanceDelta delta = */swapRouter.swap(poolKey, swapParams, testSettings, hookData);
 
         // Verify hook processed the swap
         uint256 hookBalanceAfter = address(detoxHook).balance;
@@ -494,7 +494,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
     /// @notice Test 10: Integration with real pool state
     function test_IntegrationWithRealPoolState() public {
         // Verify pool is properly initialized
-        (uint160 sqrtPriceX96, int24 tick,,) = manager.getSlot0(poolId);
+        (uint160 sqrtPriceX96, int24 tick,,) = StateLibrary.getSlot0(manager, poolId);
         assertTrue(sqrtPriceX96 > 0, "Pool should be initialized");
 
         // Verify liquidity exists
@@ -521,7 +521,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         // Ensure fresh oracle data before swap
         mockOracle.updatePriceFeeds(0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, int64(2000 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
         mockOracle.updatePriceFeeds(0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, int64(1 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
-        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        /*BalanceDelta delta = */swapRouter.swap(poolKey, swapParams, testSettings, hookData);
         vm.stopPrank();
         console.log("[PASS] Swap with multi-feed hook data successful");
     }
@@ -537,7 +537,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         // Ensure fresh oracle data before swap
         mockOracle.updatePriceFeeds(0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, int64(2000 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
         mockOracle.updatePriceFeeds(0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, int64(1 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
-        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        /*BalanceDelta delta = */swapRouter.swap(poolKey, swapParams, testSettings, hookData);
         vm.stopPrank();
         console.log("[PASS] Swap with stale price (should not interfere) successful");
     }
@@ -553,7 +553,7 @@ contract SwapRouterIntegrationTest is Test, Deployers {
         // Ensure fresh oracle data before swap
         mockOracle.updatePriceFeeds(0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace, int64(2000 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
         mockOracle.updatePriceFeeds(0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a, int64(1 * 1e6), uint64(1e4), -8, uint64(block.timestamp));
-        BalanceDelta delta = swapRouter.swap(poolKey, swapParams, testSettings, hookData);
+        /*BalanceDelta delta = */swapRouter.swap(poolKey, swapParams, testSettings, hookData);
         vm.stopPrank();
         console.log("[PASS] Swap with wide confidence (should not interfere) successful");
     }

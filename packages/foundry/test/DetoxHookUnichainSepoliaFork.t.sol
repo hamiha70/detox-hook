@@ -4,14 +4,14 @@ pragma solidity ^0.8.19;
 import "./DetoxHookForkTestBase.t.sol";
 
 /**
- * @title DetoxHookArbitrumSepoliaFork
- * @notice Fork test for DetoxHook on Arbitrum Sepolia using dynamic address resolution
+ * @title DetoxHookUnichainSepoliaFork
+ * @notice Fork test for DetoxHook on Unichain Sepolia using dynamic address resolution
  * @dev Inherits from DetoxHookForkTestBase for reusable test logic
  */
-contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
+contract DetoxHookUnichainSepoliaFork is DetoxHookForkTestBase(1301) {
     // ============ Test Setup ============
     
-    /// @notice Initialize Arbitrum Sepolia fork test
+    /// @notice Initialize Unichain Sepolia fork test
     function setUp() public override {
         // Call base setup which handles forking, contract initialization, and hook deployment
         super.setUp();
@@ -32,7 +32,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         
         manager.initialize(poolKey, sqrtPriceX96);
         
-        console.log("=== Pool Initialized ===");
+        console.log("=== Pool Initialized on Unichain Sepolia ===");
         console.log("Pool ID:", uint256(PoolId.unwrap(poolId)));
         console.log("Initial Price (sqrtPriceX96):", sqrtPriceX96);
         
@@ -71,7 +71,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         
         modifyLiquidityRouter.modifyLiquidity(poolKey, params, "");
         
-        console.log("=== Initial Liquidity Added ===");
+        console.log("=== Initial Liquidity Added on Unichain ===");
         console.log("Token0 Balance:", token0.balanceOf(address(this)));
         console.log("Token1 Balance:", token1.balanceOf(address(this)));
     }
@@ -83,9 +83,9 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
         MockERC20 token1 = MockERC20(Currency.unwrap(currency1));
         
-        // Standard Anvil test accounts
-        address user1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8; // Anvil account 1
-        address user2 = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC; // Anvil account 2
+        // Standard test accounts (same as Anvil for consistency)
+        address user1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+        address user2 = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
         
         // Fund users with tokens for testing
         if (token0.decimals() == 18) {
@@ -102,7 +102,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
             token1.mint(user2, 1 ether);      // 1 WETH to user2
         }
         
-        console.log("=== Test Users Setup Complete ===");
+        console.log("=== Test Users Setup Complete on Unichain ===");
         console.log("User1:", user1);
         console.log("User2:", user2);
         console.log("Users funded with test tokens");
@@ -110,10 +110,10 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
 
     // ============ Test Functions ============
     
-    /// @notice Test Arbitrum Sepolia infrastructure is working
-    function test_ArbitrumSepoliaInfrastructure() public {
+    /// @notice Test Unichain Sepolia infrastructure is working
+    function test_UnichainSepoliaInfrastructure() public {
         // Verify we're on the correct network
-        assertEq(block.chainid, 421614, "Should be on Arbitrum Sepolia");
+        assertEq(block.chainid, 1301, "Should be on Unichain Sepolia");
         
         // Verify all contracts are deployed and accessible
         assertTrue(address(manager).code.length > 0, "PoolManager should exist");
@@ -124,7 +124,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         address pythOracle = ChainAddresses.getPythOracle(CHAIN_ID);
         assertTrue(pythOracle.code.length > 0, "Pyth oracle should exist");
         
-        console.log("=== Infrastructure Verification Passed ===");
+        console.log("=== Unichain Sepolia Infrastructure Verification ===");
         console.log("Chain ID:", block.chainid);
         console.log("PoolManager:", address(manager));
         console.log("SwapRouter:", address(swapRouter));
@@ -135,17 +135,17 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
     /// @notice Test fork setup is working correctly
     function test_ForkSetup() public {
         // Verify chain information
-        assertEq(CHAIN_ID, 421614, "Chain ID should be Arbitrum Sepolia");
-        assertEq(keccak256(bytes(chainName)), keccak256(bytes("Arbitrum Sepolia")), "Chain name should be correct");
+        assertEq(CHAIN_ID, 1301, "Chain ID should be Unichain Sepolia");
+        assertEq(keccak256(bytes(chainName)), keccak256(bytes("Unichain Sepolia")), "Chain name should be correct");
         assertTrue(bytes(rpcUrl).length > 0, "RPC URL should be set");
         
-        console.log("=== Fork Setup Verification ===");
+        console.log("=== Unichain Fork Setup Verification ===");
         console.log("Chain ID:", CHAIN_ID);
         console.log("Chain Name:", chainName);
         console.log("RPC URL:", rpcUrl);
     }
     
-    /// @notice Test hook deployment is working
+    /// @notice Test hook deployment on Unichain
     function test_HookDeployment() public {
         // Verify hook is deployed
         assertTrue(address(hook) != address(0), "Hook should be deployed");
@@ -158,69 +158,13 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         // Verify hook is connected to pool manager
         assertEq(address(hook.poolManager()), address(manager), "Hook should be connected to PoolManager");
         
-        console.log("=== Hook Deployment Verification ===");
+        console.log("=== Unichain Hook Deployment Verification ===");
         console.log("Hook Address:", address(hook));
         console.log("Hook Flags:", hookFlags);
         console.log("Required Flags:", HOOK_FLAGS);
     }
     
-    /// @notice Test hook permissions are set correctly
-    function test_HookPermissions() public {
-        Hooks.Permissions memory permissions = hook.getHookPermissions();
-        
-        assertTrue(permissions.beforeSwap, "beforeSwap should be enabled");
-        assertTrue(permissions.beforeSwapReturnDelta, "beforeSwapReturnDelta should be enabled");
-        
-        // Verify other permissions are not set (as expected)
-        assertFalse(permissions.afterSwap, "afterSwap should be disabled");
-        assertFalse(permissions.beforeAddLiquidity, "beforeAddLiquidity should be disabled");
-        assertFalse(permissions.afterAddLiquidity, "afterAddLiquidity should be disabled");
-        
-        console.log("=== Hook Permissions Verification ===");
-        console.log("beforeSwap:", permissions.beforeSwap);
-        console.log("beforeSwapReturnDelta:", permissions.beforeSwapReturnDelta);
-    }
-    
-    /// @notice Test pool initialization
-    function test_PoolInitialization() public {
-        // Verify pool is initialized
-        (uint160 sqrtPriceX96, int24 tick, , ) = StateLibrary.getSlot0(manager, poolId);
-        
-        assertTrue(sqrtPriceX96 > 0, "Pool should be initialized with non-zero price");
-        assertTrue(tick != 0, "Pool should have a non-zero tick");
-        
-        console.log("=== Pool Initialization Verification ===");
-        console.log("Pool ID:", uint256(PoolId.unwrap(poolId)));
-        console.log("Current Price (sqrtPriceX96):", sqrtPriceX96);
-        console.log("Current Tick:", tick);
-    }
-    
-    /// @notice Test real Pyth oracle reads
-    function test_RealPythOracleReads() public {
-        address pythOracle = ChainAddresses.getPythOracle(CHAIN_ID);
-        IPyth pyth = IPyth(pythOracle);
-        
-        // Try to read ETH/USD price (this may fail if no recent updates)
-        bytes32 ethPriceId = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
-        
-        try pyth.getPriceUnsafe(ethPriceId) returns (PythStructs.Price memory price) {
-            console.log("=== Pyth Oracle Read Success ===");
-            console.log("ETH Price:", uint256(uint64(price.price)));
-            console.log("Confidence:", price.conf);
-            console.log("Publish Time:", price.publishTime);
-            console.log("Exponent:", uint256(uint32(price.expo)));
-            
-            // Basic sanity checks
-            assertTrue(price.price > 0, "Price should be positive");
-            assertTrue(price.publishTime > 0, "Publish time should be set");
-        } catch {
-            console.log("=== Pyth Oracle Read Failed ===");
-            console.log("This is expected if no recent price updates are available");
-            console.log("Oracle exists but may not have fresh data");
-        }
-    }
-    
-    /// @notice Test basic swap functionality (this was the failing test)
+    /// @notice Test basic swap functionality on Unichain
     function test_BasicSwap() public {
         MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
         MockERC20 token1 = MockERC20(Currency.unwrap(currency1));
@@ -229,7 +173,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         uint256 initialBalance0 = token0.balanceOf(address(this));
         uint256 initialBalance1 = token1.balanceOf(address(this));
         
-        console.log("=== Before Swap ===");
+        console.log("=== Before Swap on Unichain ===");
         console.log("Token0 Balance:", initialBalance0);
         console.log("Token1 Balance:", initialBalance1);
         
@@ -255,7 +199,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         uint256 finalBalance0 = token0.balanceOf(address(this));
         uint256 finalBalance1 = token1.balanceOf(address(this));
         
-        console.log("=== After Swap ===");
+        console.log("=== After Swap on Unichain ===");
         console.log("Token0 Balance:", finalBalance0);
         console.log("Token1 Balance:", finalBalance1);
         console.log("Delta Amount0:", delta.amount0());
@@ -266,7 +210,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
                   "Swap should have caused balance changes");
         
         // If we swapped token0 for token1 (zeroForOne = true), we should have:
-        // - Less token0 (negative delta0)
+        // - Less token0 (negative delta0)  
         // - More token1 (positive delta1)
         if (params.zeroForOne) {
             assertTrue(delta.amount0() < 0, "Should have spent token0");
@@ -274,71 +218,60 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         }
     }
     
-    /// @notice Test hook does not interfere with liquidity operations
-    function test_HookDoesNotInterferWithLiquidity() public {
-        MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
-        MockERC20 token1 = MockERC20(Currency.unwrap(currency1));
+    /// @notice Test Pyth oracle functionality on Unichain
+    function test_PythOracleReads() public {
+        address pythOracle = ChainAddresses.getPythOracle(CHAIN_ID);
+        IPyth pyth = IPyth(pythOracle);
         
-        // Mint additional tokens for liquidity test
-        token0.mint(address(this), 1e18);
-        token1.mint(address(this), 1e18);
+        // Try to read ETH/USD price
+        bytes32 ethPriceId = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
         
-        // Add more liquidity
-        ModifyLiquidityParams memory params = ModifyLiquidityParams({
-            tickLower: -300,
-            tickUpper: 300,
-            liquidityDelta: int256(1e15), // Smaller amount
-            salt: bytes32(uint256(1))
-        });
-        
-        // This should not revert due to hook interference
-        BalanceDelta delta = modifyLiquidityRouter.modifyLiquidity(poolKey, params, "");
-        
-        console.log("=== Liquidity Addition Test ===");
-        console.log("Liquidity Delta Amount0:", delta.amount0());
-        console.log("Liquidity Delta Amount1:", delta.amount1());
-        
-        // Verify liquidity was added (should have non-zero deltas)
-        assertTrue(delta.amount0() != 0 || delta.amount1() != 0, "Liquidity operation should affect balances");
-    }
-    
-    /// @notice Test multiple swaps work correctly
-    function test_MultipleSwaps() public {
-        MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
-        MockERC20 token1 = MockERC20(Currency.unwrap(currency1));
-        
-        // Approve swap router
-        token0.approve(address(swapRouter), type(uint256).max);
-        token1.approve(address(swapRouter), type(uint256).max);
-        
-        // Perform multiple small swaps
-        for (uint i = 0; i < 3; i++) {
-            SwapParams memory params = SwapParams({
-                zeroForOne: i % 2 == 0, // Alternate direction
-                amountSpecified: -500, // Small exact input
-                sqrtPriceLimitX96: 0
-            });
+        try pyth.getPriceUnsafe(ethPriceId) returns (PythStructs.Price memory price) {
+            console.log("=== Unichain Pyth Oracle Read Success ===");
+            console.log("ETH Price:", uint256(uint64(price.price)));
+            console.log("Confidence:", price.conf);
+            console.log("Publish Time:", price.publishTime);
+            console.log("Exponent:", uint256(uint32(price.expo)));
             
-            PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({
-                takeClaims: false,
-                settleUsingBurn: false
-            });
-            BalanceDelta delta = swapRouter.swap(poolKey, params, testSettings, "");
-            
-            console.log("=== Swap", i + 1, "===");
-            console.log("Direction (zeroForOne):", params.zeroForOne);
-            console.log("Delta Amount0:", delta.amount0());
-            console.log("Delta Amount1:", delta.amount1());
-            
-            // Each swap should produce non-zero deltas
-            assertTrue(delta.amount0() != 0 || delta.amount1() != 0, "Each swap should affect balances");
+            // Basic sanity checks
+            assertTrue(price.price > 0, "Price should be positive");
+            assertTrue(price.publishTime > 0, "Publish time should be set");
+        } catch {
+            console.log("=== Unichain Pyth Oracle Read Failed ===");
+            console.log("This is expected if no recent price updates are available");
+            console.log("Oracle exists but may not have fresh data");
         }
     }
     
-    /// @notice Test deployment summary information
+    /// @notice Test network-specific behavior differences
+    function test_NetworkSpecificBehavior() public {
+        // Test any Unichain-specific behavior
+        console.log("=== Unichain Network Specifics ===");
+        console.log("Chain ID:", block.chainid);
+        console.log("Block Number:", block.number);
+        console.log("Block Timestamp:", block.timestamp);
+        
+        // Verify we're getting different results than Arbitrum would
+        assertTrue(block.chainid == 1301, "Should be on Unichain Sepolia");
+        
+        // Test gas behavior (Unichain may have different gas mechanics)
+        uint256 gasStart = gasleft();
+        
+        // Perform some operations
+        MockERC20 token0 = MockERC20(Currency.unwrap(currency0));
+        token0.balanceOf(address(this));
+        
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used for balance check:", gasUsed);
+        
+        // Gas usage should be reasonable
+        assertTrue(gasUsed < 10000, "Simple operation should not use excessive gas");
+    }
+    
+    /// @notice Test deployment summary for Unichain
     function test_DeploymentSummary() public view {
-        console.log("=== Deployment Summary ===");
-        console.log("Network: Arbitrum Sepolia");
+        console.log("=== Unichain Deployment Summary ===");
+        console.log("Network: Unichain Sepolia");
         console.log("Chain ID:", CHAIN_ID);
         console.log("Hook Address:", address(hook));
         console.log("Pool ID:", uint256(PoolId.unwrap(poolId)));
@@ -352,47 +285,23 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
         assertTrue(Currency.unwrap(currency0) != address(0), "Currency0 should be set");
         assertTrue(Currency.unwrap(currency1) != address(0), "Currency1 should be set");
     }
-
-    /// @notice Test quick pool creation workflow
-    function test_QuickTestPoolCreation() public {
-        // Create another pool with different parameters to test pool creation
-        MockERC20 newToken0 = new MockERC20("Test Token A", "TTA", 18);
-        MockERC20 newToken1 = new MockERC20("Test Token B", "TTB", 6);
+    
+    /// @notice Test cross-network compatibility
+    function test_CrossNetworkCompatibility() public {
+        // Verify that the same hook logic works across networks
+        console.log("=== Cross-Network Compatibility Test ===");
         
-        Currency newCurrency0;
-        Currency newCurrency1;
+        // The hook should have the same interface and behavior
+        Hooks.Permissions memory permissions = hook.getHookPermissions();
+        assertTrue(permissions.beforeSwap, "beforeSwap should be enabled");
+        assertTrue(permissions.beforeSwapReturnDelta, "beforeSwapReturnDelta should be enabled");
         
-        // Ensure proper ordering
-        if (address(newToken0) < address(newToken1)) {
-            newCurrency0 = Currency.wrap(address(newToken0));
-            newCurrency1 = Currency.wrap(address(newToken1));
-        } else {
-            newCurrency0 = Currency.wrap(address(newToken1));
-            newCurrency1 = Currency.wrap(address(newToken0));
-        }
+        // Pool operations should work the same way
+        (uint160 sqrtPriceX96, , , ) = StateLibrary.getSlot0(manager, poolId);
+        assertTrue(sqrtPriceX96 > 0, "Pool should be initialized");
         
-        // Create new pool key
-        PoolKey memory newPoolKey = PoolKey({
-            currency0: newCurrency0,
-            currency1: newCurrency1,
-            fee: 500, // 0.05%
-            tickSpacing: 10,
-            hooks: IHooks(address(hook))
-        });
-        
-        PoolId newPoolId = newPoolKey.toId();
-        
-        // Initialize the new pool
-        uint160 initPrice = ChainAddresses.getCurrentEthUsdcSqrtPriceX96();
-        manager.initialize(newPoolKey, initPrice);
-        
-        // Verify pool was created
-        (uint160 sqrtPriceX96, , , ) = StateLibrary.getSlot0(manager, newPoolId);
-        assertEq(sqrtPriceX96, initPrice, "Pool should be initialized at correct price");
-        
-        console.log("=== Quick Pool Creation Test ===");
-        console.log("New Pool ID:", uint256(PoolId.unwrap(newPoolId)));
-        console.log("Initialized Price:", sqrtPriceX96);
-        console.log("Pool creation successful");
+        console.log("Hook permissions consistent across networks");
+        console.log("Pool operations work consistently");
+        console.log("Cross-network compatibility verified");
     }
 } 

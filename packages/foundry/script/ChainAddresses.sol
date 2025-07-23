@@ -213,9 +213,9 @@ library ChainAddresses {
     }
 
     /// @notice Get the Permit2 address for a given chain
-    /// @param chainId The chain ID to get the address for
+    /// @dev Permit2 uses the same address on all networks
     /// @return The Permit2 address
-    function getPermit2(uint256 chainId) internal pure returns (address) {
+    function getPermit2(uint256 /* chainId */) internal pure returns (address) {
         return 0x000000000022D473030F116dDEE9F6B43aC78BA3; // Permit2 is the same on all mainnets and testnets
     }
 

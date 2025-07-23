@@ -817,7 +817,7 @@ contract DeployDetoxHookComplete is Script {
                 salt: bytes32(0)
             }),
             ""
-        ) returns (BalanceDelta delta1) {
+        ) returns (BalanceDelta /* delta1 */) {
             console.log("Pool 1 liquidity added successfully");
         } catch Error(string memory reason) {
             console.log("Pool 1 liquidity addition failed:", reason);
@@ -838,7 +838,7 @@ contract DeployDetoxHookComplete is Script {
                 salt: bytes32(0)
             }),
             ""
-        ) returns (BalanceDelta delta2) {
+        ) returns (BalanceDelta /* delta2 */) {
             console.log("Pool 2 liquidity added successfully");
         } catch Error(string memory reason) {
             console.log("Pool 2 liquidity addition failed:", reason);
@@ -1048,7 +1048,7 @@ contract DeployDetoxHookComplete is Script {
         console.log("Deployer USDC before:", usdcBefore);
         // Perform a test swap (USDC -> ETH)
         // For USDC->ETH, zeroForOne = false, amountToSwap = -1000e6 (exact input)
-        try swapRouterFixedInstance.swap(-1000e6, false, "") returns (BalanceDelta delta) {
+        try swapRouterFixedInstance.swap(-1000e6, false, "") returns (BalanceDelta /* delta */) {
             console.log("Swap executed: 1000 USDC -> ETH");
         } catch Error(string memory reason) {
             console.log("Swap failed (string):", reason);
@@ -1123,7 +1123,7 @@ contract DeployDetoxHookComplete is Script {
         console.log("[CONTROL] Deployer ETH before:", ethBefore);
         console.log("[CONTROL] Deployer USDC before:", usdcBefore);
         // Try a swap (USDC -> ETH, no hook, so hookData is empty)
-        try controlSwapRouter.swap(-1000e6, false, "") returns (BalanceDelta delta) {
+        try controlSwapRouter.swap(-1000e6, false, "") returns (BalanceDelta /* delta */) {
             console.log("[CONTROL] Swap executed: 1000 USDC -> ETH");
         } catch Error(string memory reason) {
             console.log("[CONTROL] Swap failed (string):", reason);

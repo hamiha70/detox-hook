@@ -223,7 +223,7 @@ library SafetyChecks {
         uint256 tokenAmount,
         uint256 ethAmount,
         address spender
-    ) internal {
+    ) internal view {
         console.log("[SAFETY] Validating liquidity operation");
         
         // Check ETH balance
@@ -248,7 +248,7 @@ library SafetyChecks {
         address account,
         uint256 tokenAmount,
         address spender
-    ) internal {
+    ) internal view {
         console.log("[SAFETY] Validating swap operation");
         
         // Check token balance
