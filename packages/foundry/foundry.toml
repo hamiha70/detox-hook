@@ -16,6 +16,16 @@ ffi = true
 [profile.default.fuzz]
 runs = 1000
 
+# Gas limit settings based on DetoxHook analysis
+[profile.default.gas]
+limit = 900000  # Sufficient for real Pyth integration
+price = 1000000000  # 1 gwei
+
+# Test profile with higher limits for DetoxHook testing
+[profile.test]
+gas_limit = 1000000
+gas_reports = ["*"]
+
 # See more config options https://github.com/foundry-rs/foundry/tree/master/crates/config
 
 [rpc_endpoints]

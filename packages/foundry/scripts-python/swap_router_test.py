@@ -316,7 +316,7 @@ class SwapRouterTester:
             ).build_transaction({
                 'from': account.address,
                 'value': int(swap_amount_eth * 10**18),  # Send ETH for the swap
-                'gas': 500000,  # Higher gas for swap
+                'gas': 900000,  # Higher gas for DetoxHook + Pyth
                 'gasPrice': self.w3.eth.gas_price,
                 'nonce': self.w3.eth.get_transaction_count(account.address),
                 'chainId': self.w3.eth.chain_id
