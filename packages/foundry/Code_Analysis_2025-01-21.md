@@ -1,5 +1,5 @@
 # DetoxHook Codebase Analysis & Refactoring Plan
-*Analysis Date: January 21, 2025*
+*Analysis Date: July 19, 2025*
 *Last Updated: July 22, 2025 - Phase 3 COMPLETED ✅*
 
 ## 🎯 **EXECUTIVE SUMMARY**
@@ -486,3 +486,60 @@ The codebase has **comprehensive deployment coverage** with both modular and all
 - Document all actions and results
 
 --- 
+
+# Code Analysis (2025-07-23)
+
+## Token Strategy: MockUSDC for All Environments
+
+### **Rationale**
+- Using MockUSDC (a mintable ERC20 with 6 decimals) for all environments—including Arbitrum Sepolia—simplifies deployment, testing, and demoing.
+- Native USDC on Arbitrum Sepolia cannot be minted, and faucets/bridges are unreliable or rate-limited.
+- MockUSDC allows us to guarantee that all test accounts and contracts can be funded as needed.
+
+### **Implementation Plan**
+- **Deploy MockUSDC** on every environment (including Arbitrum Sepolia).
+- **Fund all relevant addresses** (deployer, demo users, contracts) with sufficient MockUSDC for swaps, liquidity, and testing.
+- **Update all scripts** to use MockUSDC address for USDC operations, regardless of network.
+- **Do not attempt to mint or use native USDC** on Arbitrum Sepolia.
+
+### **Control of Minting**
+- The deployer/owner of MockUSDC is the only address that can mint new tokens.
+- **Best practice:**
+  - Deploy MockUSDC from a known, controlled deployer address.
+  - Use this deployer to mint and distribute tokens to all test/demo accounts.
+  - Optionally, transfer ownership to a multisig or burn the owner key after initial funding for extra realism.
+
+### **Implications**
+- All scripts and contracts should reference the deployed MockUSDC address (not the native USDC address) for all USDC operations.
+- All test and demo flows will work identically on local, testnet, and (if desired) mainnet forks.
+- This approach is artificial but ensures reliability and control for development and demos.
+
+---
+
+## Safety Checks and Automation (Summary)
+
+### **Deployment Checks**
+- Ensure no contract is deployed at a target address before deploying (CREATE2 safety).
+- Make sure that price registry is deployed before deploying the hook.
+- Make sure that the priceIds are set correctly for ETH and USDC (mockUSDC)
+- Check that a pool is not already initialized before creating a new one.
+- Validate that routers are approved on ERC20 before swapping or providing liquidity.
+- Ensure addresses are funded with enough ETH before initiating transactions.
+- Ensure addresses have enough tokens before swaps, transfers, or liquidity provision.
+- Ensure that the deployer is able to mint tokens.
+- Ensure the routers are approved on the token before swapping or providing liquidity.
+
+### **Script Structure Recommendations**
+- Consolidate to a small set of core deployment and utility scripts.
+- Remove or archive legacy scripts.
+- Add utility scripts for funding, verification, and post-deployment testing.
+- Use a hybrid or mock-only token strategy for all environments.
+
+---
+
+## Next Steps
+- Update deployment and CLI scripts to always deploy and use MockUSDC.
+- Add comprehensive safety checks as described above.
+- Ensure the deployer/owner of MockUSDC is known and used for all minting operations.
+- Document the MockUSDC address and owner in the deployment guide.
+- Systematically implement and test these changes for reliability and demo-readiness. 

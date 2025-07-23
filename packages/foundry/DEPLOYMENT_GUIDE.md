@@ -223,3 +223,44 @@ Once SwapRouterFixed is deployed, the demo will be fully functional with:
 - DetoxHook: `0x07Fae0457E31b0047363d63ac3Dc3e446abf0088`
 - Pool 1: `0xa49f711787deee79969f93a4f2eae9b56a2345dbaee1b057ba803e771c43c7de`
 - Pool 2: `0x18bfc05a7bd173fb4635dc27ddc8bc63f67f6666497555b4391665fe6a614227` 
+
+---
+
+## 🪙 **USDC Token Strategy: MockUSDC Everywhere**
+
+### **Why MockUSDC?**
+- Native USDC on Arbitrum Sepolia cannot be minted and is hard to obtain in large quantities.
+- Using MockUSDC (a mintable ERC20) for all environments ensures all test/demo accounts can be funded as needed.
+- This approach is artificial but guarantees reliability for development and demos.
+
+### **How It Works**
+- **Deploy MockUSDC** on every environment (including Arbitrum Sepolia).
+- **Fund all relevant addresses** (deployer, demo users, contracts) with sufficient MockUSDC for swaps, liquidity, and testing.
+- **All scripts and contracts** reference the deployed MockUSDC address for USDC operations.
+- **Do not attempt to mint or use native USDC** on Arbitrum Sepolia.
+
+### **Controlling Minting**
+- The deployer/owner of MockUSDC is the only address that can mint new tokens.
+- **Best practice:**
+  - Deploy MockUSDC from a known, controlled deployer address.
+  - Use this deployer to mint and distribute tokens to all test/demo accounts.
+  - Optionally, transfer ownership to a multisig or burn the owner key after initial funding for extra realism.
+
+### **Record Keeping**
+- **Document the MockUSDC address and owner** in this guide after deployment for reference.
+
+### **Deployed MockUSDC Information** 
+*(To be updated after deployment)*
+- **MockUSDC Address**: `[TO_BE_UPDATED]`
+- **Owner/Deployer**: `[TO_BE_UPDATED]`
+- **Funded Accounts**: Deployer + Demo accounts automatically funded
+- **Minting Control**: Only owner can mint new tokens
+
+### **Safety Features Implemented**
+- ✅ **Deployment Safety**: Checks if contracts already exist before deploying
+- ✅ **Balance Validation**: Ensures sufficient ETH/tokens before operations
+- ✅ **Approval Management**: Automatic ERC20 approval handling
+- ✅ **Pool State Checks**: Prevents duplicate pool initialization
+- ✅ **Comprehensive Logging**: Clear safety check messages and status
+
+--- 

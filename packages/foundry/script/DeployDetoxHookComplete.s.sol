@@ -26,6 +26,9 @@ import { DevOpsTools } from "foundry-devops/src/DevOpsTools.sol";
 import { PoolParameters } from "./PoolParameters.sol";
 import { MockUSDC } from "./MockUSDC.sol";
 import { PoolManager } from "@uniswap/v4-core/src/PoolManager.sol";
+import { SafetyChecks } from "./SafetyChecks.sol";
+import { TokenHelpers } from "./TokenHelpers.sol";
+import { PriceRegistry } from "../src/PriceRegistry.sol";
 
 /// @title Complete DetoxHook Deployment Script
 /// @notice Comprehensive script that deploys DetoxHook, initializes pools, and adds liquidity
@@ -65,6 +68,7 @@ contract DeployDetoxHookComplete is Script {
     IPoolManager public poolManager;
     PoolModifyLiquidityTest public modifyLiquidityRouter;
     IERC20Minimal public usdc;
+    MockUSDC public mockUsdc;
     
     // Pool configurations
     PoolKey public poolKey1; // ETH/USDC at 2500
@@ -76,7 +80,6 @@ contract DeployDetoxHookComplete is Script {
     address public deployer;
     bool public isForked;
     
-    MockUSDC public mockUsdc;
     PoolManager public localPoolManager;
     
     // Events
@@ -121,7 +124,7 @@ contract DeployDetoxHookComplete is Script {
         if (block.chainid == 31337) {
             localPoolManager = new PoolManager(deployer);
             require(address(localPoolManager).code.length > 0, "[INTERNAL ERROR] PoolManager not deployed");
-            mockUsdc = new MockUSDC("USD Coin", "USDC", 6);
+            mockUsdc = new MockUSDC("USD Coin", "USDC", 6, deployer);
             require(address(mockUsdc).code.length > 0, "[INTERNAL ERROR] MockUSDC not deployed");
             mockUsdc.mint(deployer, 1_000_000e6); // 1,000,000 USDC to deployer
         }
@@ -138,13 +141,11 @@ contract DeployDetoxHookComplete is Script {
         
         emit DeploymentStarted(deployer, block.chainid, isForked);
         
-        // Step 1: Check balances
+        // Step 1: Check balances (moved after startBroadcast to ensure minting works)
+        vm.startBroadcast(deployerPrivateKey);
         _checkBalances();
-        
         // Step 2: Initialize contract instances
         _initializeContracts();
-        
-        vm.startBroadcast(deployerPrivateKey);
         
         // Step 3: Deploy DetoxHook
         _deployDetoxHook();
@@ -188,104 +189,72 @@ contract DeployDetoxHookComplete is Script {
         emit DeploymentCompleted(address(hook), poolId1, poolId2);
     }
     
-    /// @notice Check that deployer has sufficient ETH and USDC balances
+    /// @notice Check deployer balances and deploy/setup MockUSDC
     function _checkBalances() internal {
-        console.log("=== Step 1: Balance Check ===");
+        console.log("=== Step 1: Balance Check & MockUSDC Setup ===");
         
+        // Check ETH balance for deployment operations
+        SafetyChecks.validateETHBalance(deployer, MIN_ETH_BALANCE, "complete deployment");
+        
+        // Deploy and setup MockUSDC for all environments
+        address[] memory additionalAccounts = new address[](1);
+        additionalAccounts[0] = ANVIL_SWAPPER; // Fund the swapper account for demos
+        
+        (mockUsdc, usdc) = TokenHelpers.deployAndSetupMockUSDC(
+            deployer,
+            true, // Fund demo accounts
+            additionalAccounts
+        );
+        
+        // Log final balances
         uint256 ethBalance = deployer.balance;
-        uint256 usdcBalance = 0;
+        uint256 usdcBalance = usdc.balanceOf(deployer);
         
-        // Get USDC balance if USDC contract exists
-        address usdcAddress = ChainAddresses.getUSDC(block.chainid);
-        if (usdcAddress != address(0) && usdcAddress.code.length > 0) {
-            usdcBalance = IERC20Minimal(usdcAddress).balanceOf(deployer);
-        }
-        
+        console.log("=== Final Balance Check ===");
         console.log("ETH Balance:", ethBalance);
         console.log("USDC Balance:", usdcBalance);
-        console.log("Required ETH:", MIN_ETH_BALANCE);
-        console.log("Required USDC:", MIN_USDC_BALANCE);
+        console.log("MockUSDC Address:", address(mockUsdc));
+        console.log("MockUSDC Owner:", mockUsdc.owner());
         
-        bool ethSufficient = ethBalance >= MIN_ETH_BALANCE;
-        bool usdcSufficient = usdcBalance >= MIN_USDC_BALANCE;
-        bool sufficientBalance;
-        if (block.chainid == ChainAddresses.LOCAL_ANVIL) {
-            // Bypass USDC check for local testing
-            usdcSufficient = true;
-            sufficientBalance = ethSufficient;
-            console.log("[WARNING] Bypassing USDC balance check for LOCAL_ANVIL (31337). No USDC required for local testing.");
-        } else {
-            sufficientBalance = ethSufficient && usdcSufficient;
-        }
+        console.log("[PASS] MockUSDC deployed and balances sufficient");
         
-        console.log("ETH sufficient:", ethSufficient);
-        console.log("USDC sufficient:", usdcSufficient);
-        
-        if (!sufficientBalance) {
-            console.log("");
-            console.log("[ERROR] Insufficient balance detected!");
-            console.log("===============================================");
-            console.log("           DEPLOYMENT FAILED!                ");
-            console.log("===============================================");
-            console.log("");
-            console.log("Required balances:");
-            console.log("  ETH:  ", MIN_ETH_BALANCE, "wei");
-            console.log("  ETH:  ", MIN_ETH_BALANCE / 1e18, "ETH");
-            console.log("  USDC: ", MIN_USDC_BALANCE);
-            console.log("  USDC: ", MIN_USDC_BALANCE / 1e6, "USDC");
-            console.log("");
-            console.log("Current balances:");
-            console.log("  ETH:  ", ethBalance, "wei");
-            console.log("  ETH:  ", ethBalance / 1e18, "ETH");
-            console.log("  USDC: ", usdcBalance);
-            console.log("  USDC: ", usdcBalance / 1e6, "USDC");
-            console.log("");
-            console.log("Please fund your deployer address:", deployer);
-            console.log("Then try again.");
-            console.log("");
-            
-            revert("Insufficient balance for deployment. Please fund the deployer address.");
-        } else {
-            console.log("[PASS] Sufficient balances for deployment");
-        }
-        
-        emit BalanceChecked(deployer, ethBalance, usdcBalance, sufficientBalance);
+        emit BalanceChecked(deployer, ethBalance, usdcBalance, true);
     }
     
     /// @notice Initialize contract instances
     function _initializeContracts() internal {
         console.log("=== Step 2: Initialize Contracts ===");
-        // Validate chain addresses
-        if (block.chainid != ChainAddresses.LOCAL_ANVIL) {
-            ChainAddresses.validateChainAddresses(block.chainid);
-        }
-        // Get contract addresses
+        
+        // Get PoolManager address (MockUSDC already deployed in _checkBalances)
         if (block.chainid == 31337) {
-            require(address(localPoolManager).code.length > 0, "[INTERNAL ERROR] PoolManager not deployed");
-            require(address(mockUsdc).code.length > 0, "[INTERNAL ERROR] MockUSDC not deployed");
+            // Local Anvil - deploy fresh PoolManager if needed
+            if (address(localPoolManager) == address(0)) {
+                localPoolManager = new PoolManager(deployer);
+            }
+            SafetyChecks.checkContractExists(address(localPoolManager), "PoolManager");
             poolManager = localPoolManager;
-            usdc = IERC20Minimal(address(mockUsdc));
             console.log("Pool Manager:", address(localPoolManager));
-            console.log("USDC Token:", address(mockUsdc));
         } else {
+            // Use existing PoolManager on testnets/mainnet
             address poolManagerAddress = ChainAddresses.getPoolManager(block.chainid);
-            address usdcAddress = ChainAddresses.getUSDC(block.chainid);
-            require(poolManagerAddress.code.length > 0, "[ERROR] PoolManager address has no code deployed");
-            require(usdcAddress.code.length > 0, "[ERROR] USDC address has no code deployed");
+            SafetyChecks.checkContractExists(poolManagerAddress, "PoolManager");
             poolManager = IPoolManager(poolManagerAddress);
-            usdc = IERC20Minimal(usdcAddress);
             console.log("Pool Manager:", poolManagerAddress);
-            console.log("USDC Token:", usdcAddress);
         }
-        // Get PoolModifyLiquidityTest address
+        
+        // MockUSDC already deployed and configured in _checkBalances
+        console.log("USDC Token (MockUSDC):", address(usdc));
+        console.log("MockUSDC Owner:", mockUsdc.owner());
+        
+        // Get or deploy PoolModifyLiquidityTest
         address modifyLiquidityAddress = ChainAddresses.getPoolModifyLiquidityTest(block.chainid);
-        if (modifyLiquidityAddress != address(0)) {
-            require(modifyLiquidityAddress.code.length > 0, "[ERROR] PoolModifyLiquidityTest address has no code deployed");
+        if (modifyLiquidityAddress != address(0) && modifyLiquidityAddress.code.length > 0) {
             modifyLiquidityRouter = PoolModifyLiquidityTest(modifyLiquidityAddress);
             console.log("Using existing PoolModifyLiquidityTest at:", address(modifyLiquidityRouter));
         } else {
+            console.log("Deploying new PoolModifyLiquidityTest...");
             modifyLiquidityRouter = new PoolModifyLiquidityTest(poolManager);
-            require(address(modifyLiquidityRouter).code.length > 0, "[INTERNAL ERROR] PoolModifyLiquidityTest not deployed");
+            SafetyChecks.checkContractExists(address(modifyLiquidityRouter), "PoolModifyLiquidityTest");
             console.log("PoolModifyLiquidityTest deployed at:", address(modifyLiquidityRouter));
         }
     }
@@ -368,6 +337,8 @@ contract DeployDetoxHookComplete is Script {
         bytes memory creationCode = type(DetoxHookV2).creationCode;
         bytes memory constructorArgs = abi.encode(
             poolManager,
+            deployer,
+            ChainAddresses.getPythOracle(block.chainid),
             address(0) // priceRegistry placeholder - will be set later
         );
         
@@ -375,6 +346,7 @@ contract DeployDetoxHookComplete is Script {
         console.log("  Pool Manager:", address(poolManager));
         console.log("  Owner:", deployer);
         console.log("  Oracle:", ChainAddresses.getPythOracle(block.chainid));
+        console.log("  Price Registry:", address(0), "(placeholder)");
         
         // Mine the salt using HookMiner
         address expectedAddress;
@@ -394,11 +366,18 @@ contract DeployDetoxHookComplete is Script {
     function _deployDetoxHookWithSalt(bytes32 salt) internal returns (DetoxHookV2) {
         console.log("=== CREATE2 Deployment ===");
         
-        // Prepare deployment data
+        // First deploy PriceRegistry
+        console.log("Deploying PriceRegistry...");
+        PriceRegistry priceRegistry = new PriceRegistry(deployer);
+        console.log("PriceRegistry deployed at:", address(priceRegistry));
+        
+        // Prepare deployment data with correct constructor arguments
         bytes memory creationCode = type(DetoxHookV2).creationCode;
         bytes memory constructorArgs = abi.encode(
             poolManager,
-            address(0) // priceRegistry placeholder
+            deployer,
+            ChainAddresses.getPythOracle(block.chainid),
+            address(priceRegistry)
         );
         bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
         
@@ -658,19 +637,31 @@ contract DeployDetoxHookComplete is Script {
         emit PoolInitialized(poolId2, SQRT_PRICE_2600, TICK_SPACING_POOL_2);
     }
     
-    /// @notice Add liquidity to both pools
+    /// @notice Add liquidity to both pools with comprehensive safety checks
     function _addLiquidity() internal {
         console.log("=== Step 6: Add Liquidity ===");
         
-        // Approve USDC for liquidity operations
-        usdc.approve(address(modifyLiquidityRouter), type(uint256).max);
-        
         // Calculate ETH amounts for each pool based on prices
         // Pool 1: 1 ETH = 2500 USDC, so 1 USDC = 1/2500 ETH = 0.0004 ETH
-        uint256 ethAmount1 = (LIQUIDITY_USDC_AMOUNT * 1e18) / (2500 * 1e6); // Convert to proper decimals
+        uint256 ethAmount1 = (LIQUIDITY_USDC_AMOUNT * 1e18) / (2500 * 1e6);
         
         // Pool 2: 1 ETH = 2600 USDC, so 1 USDC = 1/2600 ETH ≈ 0.000385 ETH
-        uint256 ethAmount2 = (LIQUIDITY_USDC_AMOUNT * 1e18) / (2600 * 1e6); // Convert to proper decimals
+        uint256 ethAmount2 = (LIQUIDITY_USDC_AMOUNT * 1e18) / (2600 * 1e6);
+        
+        uint256 totalETHNeeded = ethAmount1 + ethAmount2;
+        uint256 totalUSDCNeeded = LIQUIDITY_USDC_AMOUNT * 2; // For both pools
+        
+        // Comprehensive safety checks for liquidity operations
+        SafetyChecks.validateLiquidityOperation(
+            usdc,
+            deployer,
+            totalUSDCNeeded,
+            totalETHNeeded,
+            address(modifyLiquidityRouter)
+        );
+        
+        // Ensure approval for USDC
+        SafetyChecks.ensureApproval(usdc, deployer, address(modifyLiquidityRouter), totalUSDCNeeded);
         
         console.log("Adding liquidity to Pool 1:");
         console.log("  USDC Amount:", LIQUIDITY_USDC_AMOUNT);
@@ -952,7 +943,7 @@ contract DeployDetoxHookComplete is Script {
         // Deploy a new PoolManager and USDC for isolation (or reuse existing localPoolManager/mockUsdc)
         PoolManager controlPoolManager = new PoolManager(deployer);
         require(address(controlPoolManager).code.length > 0, "[INTERNAL ERROR] Control PoolManager not deployed");
-        MockUSDC controlUsdc = new MockUSDC("USD Coin", "USDC", 6);
+        MockUSDC controlUsdc = new MockUSDC("USD Coin", "USDC", 6, deployer);
         require(address(controlUsdc).code.length > 0, "[INTERNAL ERROR] Control MockUSDC not deployed");
         controlUsdc.mint(deployer, 1_000_000e6);
         // Create pool key (no hook)
