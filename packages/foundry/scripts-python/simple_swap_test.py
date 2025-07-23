@@ -218,18 +218,42 @@ class SimpleSwapTester:
             
             # Build and send swap transaction
             nonce = self.w3.eth.get_transaction_count(account.address)
-            gas_price = self.w3.eth.gas_price
             
-            transaction = self.swap_router.functions.swap(
-                amount_wei, zero_for_one, update_data
-            ).build_transaction({
-                'from': account.address,
-                'value': int(swap_amount_eth * 10**18),  # Send ETH for the swap
-                'gas': 800000,  # High gas limit for DetoxHook + Pyth oracle calls
-                'gasPrice': gas_price,
-                'nonce': nonce,
-                'chainId': self.w3.eth.chain_id
-            })
+            # Use EIP-1559 gas pricing for better compatibility
+            try:
+                # Get EIP-1559 style pricing
+                latest_block = self.w3.eth.get_block('latest')
+                base_fee = latest_block.get('baseFeePerGas', 0)
+                max_priority_fee = min(self.w3.eth.max_priority_fee, 2000000000)  # Cap at 2 gwei
+                max_fee_per_gas = (base_fee * 2) + max_priority_fee  # 2x base fee + priority
+                
+                transaction = self.swap_router.functions.swap(
+                    amount_wei, zero_for_one, update_data
+                ).build_transaction({
+                    'from': account.address,
+                    'value': int(swap_amount_eth * 10**18),  # Send ETH for the swap
+                    'gas': 800000,  # High gas limit for DetoxHook + Pyth oracle calls
+                    'maxFeePerGas': max_fee_per_gas,
+                    'maxPriorityFeePerGas': max_priority_fee,
+                    'nonce': nonce,
+                    'chainId': self.w3.eth.chain_id,
+                    'type': 2  # EIP-1559 transaction
+                })
+            except:
+                # Fallback to legacy pricing with buffer
+                gas_price = self.w3.eth.gas_price
+                buffered_gas_price = int(gas_price * 1.5)  # 50% buffer
+                
+                transaction = self.swap_router.functions.swap(
+                    amount_wei, zero_for_one, update_data
+                ).build_transaction({
+                    'from': account.address,
+                    'value': int(swap_amount_eth * 10**18),  # Send ETH for the swap
+                    'gas': 800000,  # High gas limit for DetoxHook + Pyth oracle calls
+                    'gasPrice': buffered_gas_price,
+                    'nonce': nonce,
+                    'chainId': self.w3.eth.chain_id
+                })
             
             # Sign and send transaction
             signed_txn = self.w3.eth.account.sign_transaction(transaction, private_key)
