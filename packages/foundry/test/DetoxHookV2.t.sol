@@ -70,6 +70,9 @@ contract DetoxHookV2Test is Test, Deployers {
     // Test users
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
+    
+    // Realistic pool tokens
+    MockERC20 public realUSDC;
 
     /// @notice Format ETH amount for display (18 decimals)
     function formatETH(uint256 amount) internal pure returns (string memory) {
@@ -268,34 +271,25 @@ contract DetoxHookV2Test is Test, Deployers {
         console.log("[OK] Simple pool setup complete");
     }
 
-    /// @notice Setup realistic ETH/USDC pool at $2500 using proven legacy patterns
+    /// @notice Setup realistic ETH/USDC pool using native ETH and MockUSDC
+    /// @dev Uses address(0) for native ETH and MockERC20 for USDC (since we can't mint real USDC)
     function _setupRealisticPool() internal {
         console.log("Setting up realistic ETH/USDC pool...");
         
-        // Create ETH (address(0)) and USDC (6 decimals) tokens
-        MockERC20 realETH = new MockERC20("Ethereum", "ETH", 18);
-        MockERC20 realUSDC = new MockERC20("USD Coin", "USDC", 6);
-        
-        // Wrap as currencies and ensure proper ordering
-        Currency ethCurrency = Currency.wrap(address(realETH));
+        // Use native ETH (address(0)) and create MockUSDC only
+        Currency ethCurrency = Currency.wrap(address(0)); // Native ETH
+        realUSDC = new MockERC20("USD Coin", "USDC", 6);
         Currency usdcCurrency = Currency.wrap(address(realUSDC));
         
-        // Order currencies properly (smaller address first)
-        Currency realisticCurrency0;
-        Currency realisticCurrency1;
-        
-        if (address(realETH) < address(realUSDC)) {
-            realisticCurrency0 = ethCurrency;  // ETH
-            realisticCurrency1 = usdcCurrency; // USDC
-            console.log("[OK] Currency ordering: ETH (currency0), USDC (currency1)");
-        } else {
-            realisticCurrency0 = usdcCurrency; // USDC
-            realisticCurrency1 = ethCurrency;  // ETH
-            console.log("[OK] Currency ordering: USDC (currency0), ETH (currency1)");
-        }
+        // Currency ordering: address(0) < any_other_address, so ETH is always currency0
+        Currency realisticCurrency0 = ethCurrency;  // ETH (address(0))
+        Currency realisticCurrency1 = usdcCurrency; // USDC (MockERC20)
+        console.log("[OK] Currency ordering: ETH (currency0), USDC (currency1)");
+        console.log("[OK] ETH address:", Currency.unwrap(ethCurrency));
+        console.log("[OK] USDC address:", Currency.unwrap(usdcCurrency));
         
         // Configure PriceRegistry for realistic pool
-        priceRegistry.setPriceMapping(address(realETH), ETH_USD_PRICE_ID, "ETH");
+        priceRegistry.setPriceMapping(address(0), ETH_USD_PRICE_ID, "ETH"); // Native ETH
         priceRegistry.setPriceMapping(address(realUSDC), USDC_USD_PRICE_ID, "USDC");
         console.log("[OK] Configured PriceRegistry for realistic pool");
         
@@ -310,69 +304,113 @@ contract DetoxHookV2Test is Test, Deployers {
         
         realisticPoolId = realisticPoolKey.toId();
         
-        // Calculate proper sqrtPrice for 1 ETH = 2500 USDC using safer calculations
-        uint160 sqrtPriceX96;
-        bool ethIsCurrency0 = (realisticCurrency0 == ethCurrency);
-        
-        if (ethIsCurrency0) {
-            // ETH is currency0, USDC is currency1: price = USDC/ETH = 2500
-            // With 6 decimals for USDC: 2500 * 1e6 = 2500000000
-            sqrtPriceX96 = HookLibrary.priceToSqrtPrice(2500 * 1e6);
-            console.log("[OK] Pool setup: ETH->USDC ratio, price = 2500 * 1e6");
-        } else {
-            // USDC is currency0, ETH is currency1: price = ETH/USDC = 1/2500
-            // With 18 decimals for ETH and 6 for USDC: (1e18) / (2500 * 1e6) = 1e12 / 2500 = 4e8
-            sqrtPriceX96 = HookLibrary.priceToSqrtPrice(4e8);
-            console.log("[OK] Pool setup: USDC->ETH ratio, price = 4e8");
-        }
+        // Calculate proper sqrtPrice for 1 ETH = 2500 USDC with correct precision
+        // ETH (18 decimals) is currency0, USDC (6 decimals) is currency1
+        // Price = currency1/currency0 = USDC/ETH in 1e18 precision
+        // For 1 ETH = 2500 USDC: (2500 * 1e6) / (1 * 1e18) = 2500 / 1e12 = 2.5e-9
+        // To get 1e18 precision: 2.5e-9 * 1e18 = 2.5e9
+        uint256 poolPriceTarget = 2500000000; // 2.5e9 = 2500 USDC per ETH in correct precision
+        uint160 sqrtPriceX96 = HookLibrary.priceToSqrtPrice(poolPriceTarget);
+        console.log("[OK] Pool setup: 1 ETH = 2500 USDC");
+        console.log("[OK] Target price value:", poolPriceTarget);
         
         // Initialize pool
-        manager.initialize(realisticPoolKey, sqrtPriceX96);
+        int24 actualTick = manager.initialize(realisticPoolKey, sqrtPriceX96);
         console.log("[OK] Initialized realistic pool at 1 ETH = 2500 USDC");
+        console.log("[DEBUG] Actual pool tick:", uint256(int256(actualTick)));
         
-        // Mint tokens to test contract for liquidity (using proven legacy amounts)
-        uint256 ethLiquidityAmount = 100 * 1e18;      // 100 ETH
-        uint256 usdcLiquidityAmount = 250000 * 1e6;   // 250,000 USDC
+        // Provide ETH and USDC for liquidity
+        uint256 ethLiquidityAmount = 1000 * 1e18;      // 1000 ETH (increased from 100)
+        uint256 usdcLiquidityAmount = 2500000 * 1e6;   // 2.5M USDC (increased from 250k)
         
-        if (ethIsCurrency0) {
-            realETH.mint(address(this), ethLiquidityAmount);
-            realUSDC.mint(address(this), usdcLiquidityAmount);
-        } else {
-            realUSDC.mint(address(this), usdcLiquidityAmount);
-            realETH.mint(address(this), ethLiquidityAmount);
-        }
+        // For native ETH: use vm.deal() in tests (this contract gets ETH)
+        vm.deal(address(this), ethLiquidityAmount);
         
-        // Approve tokens for liquidity provision
-        realETH.approve(address(modifyLiquidityRouter), type(uint256).max);
+        // For USDC: mint MockERC20 tokens
+        realUSDC.mint(address(this), usdcLiquidityAmount);
+        
+        // Approve USDC for liquidity provision (ETH doesn't need approval)
         realUSDC.approve(address(modifyLiquidityRouter), type(uint256).max);
         
-        // Add liquidity using tiny amounts (proven legacy pattern)
-        uint256 LIQUIDITY_USDC_AMOUNT = 1e6; // 1 USDC
-        uint256 ethAmount = (LIQUIDITY_USDC_AMOUNT * 1e18) / (2500 * 1e6); // 0.0004 ETH
+        // Add liquidity with sufficient amounts for realistic testing
+        // Use a much larger liquidity delta to ensure sufficient pool liquidity
+        uint256 LIQUIDITY_USDC_AMOUNT = 1000000 * 1e6; // 1M USDC for massive liquidity (increased from 100k)
+        uint256 ethAmount = (LIQUIDITY_USDC_AMOUNT * 1e18) / (2500 * 1e6); // 400 ETH for reference
+        
+        // Calculate proper tick range around the ACTUAL pool tick
+        int24 tickSpacing = 60;      // From pool configuration
+        
+        // Use safe tick bounds - Uniswap V4 typically has bounds around ±887272
+        int24 MAX_TICK = 887220;     // Slightly under max, rounded to tick spacing
+        int24 MIN_TICK = -887220;    // Slightly over min, rounded to tick spacing
+        
+        // Use wider tick range to ensure more liquidity in range
+        int24 tickLower = ((actualTick - 12000) / tickSpacing) * tickSpacing; // Wider range (was 6000)
+        int24 tickUpper = ((actualTick + 12000) / tickSpacing) * tickSpacing;  // Wider range (was 6000)
+        
+        // Clamp to valid bounds
+        if (tickLower < MIN_TICK) tickLower = MIN_TICK;
+        if (tickUpper > MAX_TICK) tickUpper = MAX_TICK;
+        
+        // Ensure the range includes the actual tick
+        if (actualTick < tickLower || actualTick > tickUpper) {
+            console.log("[ERROR] Tick range doesn't include actual tick!");
+            console.log("[ERROR] Actual tick:", uint256(int256(actualTick)));
+            console.log("[ERROR] Range:", uint256(int256(tickLower)), "to", uint256(int256(tickUpper)));
+        }
         
         ModifyLiquidityParams memory liquidityParams = ModifyLiquidityParams({
-            tickLower: -201000,  // Wide range around current price
-            tickUpper: -199500,
-            liquidityDelta: int256(LIQUIDITY_USDC_AMOUNT), // Use tiny amount
+            tickLower: tickLower,    // Wider range around actual price
+            tickUpper: tickUpper,    // Wider range around actual price  
+            liquidityDelta: int256(LIQUIDITY_USDC_AMOUNT), // Use 1M USDC amount for massive liquidity
             salt: 0
         });
         
-        modifyLiquidityRouter.modifyLiquidity(realisticPoolKey, liquidityParams, "");
+        // Fix debug logging for negative ticks
+        if (actualTick >= 0) {
+            console.log("[DEBUG] Actual tick:", uint256(int256(actualTick)));
+        } else {
+            console.log("[DEBUG] Actual tick: -", uint256(int256(-actualTick)));
+        }
+        
+        // Safe debug logging for tick range
+        console.log("[DEBUG] Tick range calculated");
+        if (tickLower >= 0) {
+            console.log("[DEBUG] tickLower: +", uint256(int256(tickLower)));
+        } else {
+            console.log("[DEBUG] tickLower: -", uint256(int256(-tickLower)));
+        }
+        if (tickUpper >= 0) {
+            console.log("[DEBUG] tickUpper: +", uint256(int256(tickUpper)));
+        } else {
+            console.log("[DEBUG] tickUpper: -", uint256(int256(-tickUpper)));
+        }
+        
+        // Check balances before liquidity provision
+        console.log("[DEBUG] Contract ETH balance:", address(this).balance);
+        console.log("[DEBUG] Contract USDC balance:", realUSDC.balanceOf(address(this)));
+        console.log("[DEBUG] Attempting to add liquidity");
+        console.log("[DEBUG] Liquidity delta:", uint256(int256(liquidityParams.liquidityDelta)));
+        
+        // For native ETH pools, we need to send ETH value with the call
+        uint256 ethValueNeeded = ethLiquidityAmount / 10; // Use portion of available ETH
+        modifyLiquidityRouter.modifyLiquidity{value: ethValueNeeded}(realisticPoolKey, liquidityParams, "");
         console.log("[OK] Added liquidity - ETH:", ethAmount);
         console.log("[OK] Added liquidity - USDC:", LIQUIDITY_USDC_AMOUNT / 1e6);
         
-        // Mint tokens to test users
-        if (ethIsCurrency0) {
-            realETH.mint(alice, 1000 * 1e18);      // 1000 ETH
-            realUSDC.mint(alice, 2500000 * 1e6);   // 2.5M USDC
-        } else {
-            realUSDC.mint(alice, 2500000 * 1e6);   // 2.5M USDC
-            realETH.mint(alice, 1000 * 1e18);      // 1000 ETH
-        }
+        // Check pool balances after liquidity addition
+        console.log("[DEBUG] PoolManager ETH balance:", address(manager).balance);
+        console.log("[DEBUG] PoolManager USDC balance:", realUSDC.balanceOf(address(manager)));
         
-        // Approve tokens for alice
+        // Provide tokens to test users
+        // For ETH: give alice native ETH using vm.deal()
+        vm.deal(alice, 1000 * 1e18);      // 1000 ETH
+        
+        // For USDC: mint MockERC20 tokens - give alice much more USDC
+        realUSDC.mint(alice, 10000000 * 1e6);   // 10M USDC (increased from 2.5M)
+        
+        // Approve USDC for alice (ETH doesn't need approval)
         vm.startPrank(alice);
-        realETH.approve(address(swapRouter), type(uint256).max);
         realUSDC.approve(address(swapRouter), type(uint256).max);
         vm.stopPrank();
         
@@ -392,10 +430,10 @@ contract DetoxHookV2Test is Test, Deployers {
         assertTrue(PoolId.unwrap(simplePoolId) != bytes32(0), "Simple pool should be initialized");
         assertTrue(PoolId.unwrap(realisticPoolId) != bytes32(0), "Realistic pool should be initialized");
         
-        // Verify PriceRegistry configuration
-        address currency0Token = Currency.unwrap(currency0);
-        bytes32 priceId = priceRegistry.tokenToPriceId(currency0Token);
-        assertTrue(priceId == ETH_USD_PRICE_ID, "Currency0 should map to ETH price ID");
+        // Verify PriceRegistry configuration for realistic pool
+        address realisticCurrency0Token = Currency.unwrap(realisticPoolKey.currency0);
+        bytes32 priceId = priceRegistry.tokenToPriceId(realisticCurrency0Token);
+        assertTrue(priceId == ETH_USD_PRICE_ID, "Realistic pool currency0 (ETH) should map to ETH price ID");
         
         console.log("[PASS] Setup validation complete");
     }
@@ -454,10 +492,18 @@ contract DetoxHookV2Test is Test, Deployers {
         
         // Set oracle so pool overpays for currency0
         // Pool gives 1:1, but oracle says currency0 is worth 3x currency1
-        mockOracle.updatePriceFeeds(ETH_USD_PRICE_ID, int64(3000 * 1e8), uint64(100 * 1e8), -8, uint64(block.timestamp));
-        mockOracle.updatePriceFeeds(USDC_USD_PRICE_ID, int64(1000 * 1e8), uint64(10 * 1e8), -8, uint64(block.timestamp));
+        mockOracle.updatePriceFeeds(TOK1_PRICE_ID, int64(3000 * 1e8), uint64(100 * 1e8), -8, uint64(block.timestamp));
+        mockOracle.updatePriceFeeds(TOK2_PRICE_ID, int64(1000 * 1e8), uint64(10 * 1e8), -8, uint64(block.timestamp));
         
         uint256 swapAmount = 1e18; // 1 token
+        
+        // Debug pool balances before testing
+        console.log("=== PRE-TEST BALANCES ===");
+        console.log("PoolManager currency0 balance:", MockERC20(Currency.unwrap(currency0)).balanceOf(address(manager)));
+        console.log("PoolManager currency1 balance:", MockERC20(Currency.unwrap(currency1)).balanceOf(address(manager)));
+        console.log("Alice currency0 balance:", MockERC20(Currency.unwrap(currency0)).balanceOf(alice));
+        console.log("Alice currency1 balance:", MockERC20(Currency.unwrap(currency1)).balanceOf(alice));
+        console.log("Swap amount:", swapAmount);
         
         // Test zeroForOne (currency0 -> currency1) - should capture arbitrage
         console.log("Testing zeroForOne: currency0->currency1 (should capture arbitrage)");
@@ -535,43 +581,59 @@ contract DetoxHookV2Test is Test, Deployers {
     /// @notice Test realistic ETH/USDC scenario with proven legacy patterns
     function test_RealisticETHUSDCScenario() public {
         console.log("=== TEST: Realistic ETH/USDC Scenario ===");
-        console.log("Pool: 1 ETH = 2500 USDC, Oracle: ETH overpaying scenario");
+        console.log("Pool: 1 ETH = 2500 USDC, Oracle: ETH slightly underpaid scenario");
         
-        // Set oracle to create arbitrage opportunity
+        // Set oracle to create smaller arbitrage opportunity
         // Pool: 1 ETH = 2500 USDC
-        // Oracle: ETH=$3000, USDC=$1 -> Pool underpaying for ETH
-        mockOracle.updatePriceFeeds(ETH_USD_PRICE_ID, int64(3000 * 1e8), uint64(100 * 1e8), -8, uint64(block.timestamp));
+        // Oracle: ETH=$2600, USDC=$1 -> Pool slightly underpaying for ETH
+        mockOracle.updatePriceFeeds(ETH_USD_PRICE_ID, int64(2600 * 1e8), uint64(100 * 1e8), -8, uint64(block.timestamp));
         mockOracle.updatePriceFeeds(USDC_USD_PRICE_ID, int64(1 * 1e8), uint64(0.01 * 1e8), -8, uint64(block.timestamp));
         
-        console.log("Oracle: ETH=$3000, USDC=$1 (ETH worth 3000 USDC)");
+        console.log("Oracle: ETH=$2600, USDC=$1 (ETH worth 2600 USDC)");
         console.log("Pool: 1 ETH = 2500 USDC (Pool underpaying for ETH)");
         console.log("Expected: oneForZero arbitrage (USDC->ETH)");
         
-        // Determine currency ordering
-        MockERC20 token0 = MockERC20(Currency.unwrap(realisticPoolKey.currency0));
-        MockERC20 token1 = MockERC20(Currency.unwrap(realisticPoolKey.currency1));
-        bool ethIsCurrency0 = (token0.decimals() == 18 && token1.decimals() == 6);
+        // Add detailed price verification logging
+        console.log("=== PRICE VERIFICATION ===");
+        console.log("Expected oracle ratio (USDC/ETH): 1/2600");
+        console.log("Oracle ratio value: ~384615384615384"); // 1e18 / 2600
+        console.log("Expected pool price (USDC/ETH): 1/2500");
+        console.log("Pool price value: 400000000000000"); // 1e18 / 2500
         
-        console.log("Currency0 decimals:", token0.decimals());
-        console.log("Currency1 decimals:", token1.decimals());
-        console.log("ETH is currency0:", ethIsCurrency0);
+        // Currency ordering is now fixed: ETH (currency0), USDC (currency1)
+        console.log("Currency0 (ETH) address:", Currency.unwrap(realisticPoolKey.currency0));
+        console.log("Currency1 (USDC) address:", Currency.unwrap(realisticPoolKey.currency1));
+        console.log("ETH is currency0: true (always with address(0))");
         
-        // Test the direction that should have arbitrage
-        bool shouldCaptureDirection = !ethIsCurrency0; // oneForZero when ETH is currency0
-        uint256 swapAmount = ethIsCurrency0 ? 2500 * 1e6 : 1e18; // 2500 USDC or 1 ETH
+        // For this scenario: ETH underpriced in pool, so we want to buy ETH (USDC->ETH)
+        // Since ETH is currency0 and USDC is currency1, we want oneForZero=false (USDC->ETH)
+        bool zeroForOne = false; // USDC -> ETH (buying underpriced ETH)
+        
+        // Swap amount should match INPUT currency decimals
+        // zeroForOne=false means input=currency1 (USDC, 6 decimals)
+        uint256 swapAmount = 1 * 1e6; // 1 USDC (very small amount to test with limited pool liquidity)
         
         console.log("Testing direction with expected arbitrage");
         console.log("Swap amount:", swapAmount);
         
+        // Debug balances before swap
+        console.log("=== PRE-SWAP BALANCES ===");
+        console.log("PoolManager ETH balance:", address(manager).balance);
+        console.log("PoolManager USDC balance:", realUSDC.balanceOf(address(manager)));
+        console.log("Alice ETH balance:", alice.balance);
+        console.log("Alice USDC balance:", realUSDC.balanceOf(alice));
+        console.log("Hook ETH balance:", address(hook).balance);
+        console.log("Hook USDC balance:", realUSDC.balanceOf(address(hook)));
+        
         // Record balances before
-        uint256 hookBalance0Before = token0.balanceOf(address(hook));
-        uint256 hookBalance1Before = token1.balanceOf(address(hook));
+        uint256 hookBalance0Before = address(hook).balance; // ETH balance
+        uint256 hookBalance1Before = realUSDC.balanceOf(address(hook)); // USDC balance
         
         vm.startPrank(alice);
         SwapParams memory swapParams = SwapParams({
-            zeroForOne: shouldCaptureDirection,
+            zeroForOne: zeroForOne,
             amountSpecified: -int256(swapAmount),
-            sqrtPriceLimitX96: shouldCaptureDirection ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+            sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
         });
         
         PoolSwapTest.TestSettings memory testSettings = PoolSwapTest.TestSettings({
@@ -584,6 +646,10 @@ contract DetoxHookV2Test is Test, Deployers {
         BalanceDelta delta = swapRouter.swap(realisticPoolKey, swapParams, testSettings, "");
         Vm.Log[] memory logs = vm.getRecordedLogs();
         vm.stopPrank();
+        
+        console.log("=== POST-SWAP ANALYSIS ===");
+        console.log("Swap delta amount0 (ETH):", delta.amount0());
+        console.log("Swap delta amount1 (USDC):", delta.amount1());
         
         console.log("Swap executed - Delta amount0:", delta.amount0());
         console.log("Swap executed - Delta amount1:", delta.amount1());
@@ -599,22 +665,16 @@ contract DetoxHookV2Test is Test, Deployers {
         }
         
         // Verify arbitrage capture
-        uint256 hookBalance0After = token0.balanceOf(address(hook));
-        uint256 hookBalance1After = token1.balanceOf(address(hook));
+        uint256 hookBalance0After = address(hook).balance; // ETH balance
+        uint256 hookBalance1After = realUSDC.balanceOf(address(hook)); // USDC balance
         
-        uint256 captured0 = hookBalance0After - hookBalance0Before;
-        uint256 captured1 = hookBalance1After - hookBalance1Before;
+        uint256 captured0 = hookBalance0After - hookBalance0Before; // ETH captured
+        uint256 captured1 = hookBalance1After - hookBalance1Before; // USDC captured
         
-        console.log("Hook captured currency0:", captured0);
-        console.log("Hook captured currency1:", captured1);
-        
-        if (ethIsCurrency0) {
-            console.log("Hook captured ETH:", formatETH(captured0));
-            console.log("Hook captured USDC:", formatUSDC(captured1));
-        } else {
-            console.log("Hook captured USDC:", formatUSDC(captured0));
-            console.log("Hook captured ETH:", formatETH(captured1));
-        }
+        console.log("Hook captured currency0 (ETH):", captured0);
+        console.log("Hook captured currency1 (USDC):", captured1);
+        console.log("Hook captured ETH:", formatETH(captured0));
+        console.log("Hook captured USDC:", formatUSDC(captured1));
         
         // Should capture some arbitrage
         assertTrue(arbitrageCaptured, "Should detect arbitrage in realistic scenario");

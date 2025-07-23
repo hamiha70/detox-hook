@@ -72,14 +72,19 @@ contract SwapRouterIntegrationTest is Test, Deployers {
 
         // Deploy MockPyth
         mockOracle = new MockPyth(60, 1); // 60 second validity, 1 wei fee
-        // Deploy DetoxHook to the correct address with proper permissions and mockOracle
-        address hookAddress = address(uint160(HOOK_FLAGS));
         
         // Deploy mock price registry for testing
         MockPriceRegistry mockRegistry = new MockPriceRegistry(address(this));
         
+        // Deploy DetoxHook to the correct address with proper permissions and mockOracle
+        address hookAddress = address(uint160(HOOK_FLAGS));
+        
         // Use 4-parameter constructor (poolManager, owner, oracle, priceRegistry)
-        deployCodeTo("DetoxHookV2.sol", abi.encode(manager, address(mockRegistry)), hookAddress);
+        deployCodeTo(
+            "DetoxHookV2.sol", 
+            abi.encode(manager, address(this), address(mockOracle), address(mockRegistry)), 
+            hookAddress
+        );
         detoxHook = DetoxHookV2(payable(hookAddress));
 
         // Create pool key
