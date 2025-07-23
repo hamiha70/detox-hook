@@ -263,9 +263,14 @@ contract DeployDetoxHookComplete is Script {
     function _deployDetoxHook() internal {
         console.log("=== Step 3: Deploy DetoxHook ===");
         
-        // Mine the correct salt for hook address
+        // First deploy PriceRegistry before salt mining
+        console.log("Deploying PriceRegistry...");
+        PriceRegistry priceRegistry = new PriceRegistry(deployer);
+        console.log("PriceRegistry deployed at:", address(priceRegistry));
+        
+        // Mine the correct salt for hook address using real PriceRegistry
         bytes32 salt;
-        try this._mineHookSaltExternal() returns (bytes32 minedSalt) {
+        try this._mineHookSaltExternalWithRegistry(address(priceRegistry)) returns (bytes32 minedSalt) {
             salt = minedSalt;
             console.log("Salt mining successful");
         } catch {
@@ -273,7 +278,7 @@ contract DeployDetoxHookComplete is Script {
             revert("Hook deployment failed: unable to mine valid salt for hook address");
         }
         
-        // Calculate expected DetoxHook address
+        // Calculate expected DetoxHook address with real PriceRegistry
         address expectedHookAddress = HookMiner.computeAddress(
             CREATE2_DEPLOYER,
             uint256(salt),
@@ -283,7 +288,7 @@ contract DeployDetoxHookComplete is Script {
                     poolManager,
                     deployer,
                     ChainAddresses.getPythOracle(block.chainid),
-                    address(0) // priceRegistry placeholder
+                    address(priceRegistry)
                 )
             )
         );
@@ -298,8 +303,8 @@ contract DeployDetoxHookComplete is Script {
             console.log("[DEPLOY] Deploying new DetoxHook...");
         }
         
-        // Deploy the hook using CREATE2
-        try this._deployDetoxHookWithSaltExternal(salt) returns (DetoxHookV2 deployedHook) {
+        // Deploy the hook using CREATE2 with real PriceRegistry
+        try this._deployDetoxHookWithSaltExternalWithRegistry(salt, address(priceRegistry)) returns (DetoxHookV2 deployedHook) {
             hook = deployedHook;
             console.log("Hook deployment successful");
         } catch Error(string memory reason) {
@@ -316,9 +321,19 @@ contract DeployDetoxHookComplete is Script {
         return _mineHookSalt();
     }
     
+    /// @notice External wrapper for salt mining with PriceRegistry (for try-catch)
+    function _mineHookSaltExternalWithRegistry(address priceRegistry) external view returns (bytes32) {
+        return _mineHookSaltWithRegistry(priceRegistry);
+    }
+    
     /// @notice External wrapper for hook deployment (for try-catch)
     function _deployDetoxHookWithSaltExternal(bytes32 salt) external returns (DetoxHookV2) {
         return _deployDetoxHookWithSalt(salt);
+    }
+    
+    /// @notice External wrapper for hook deployment with PriceRegistry (for try-catch)
+    function _deployDetoxHookWithSaltExternalWithRegistry(bytes32 salt, address priceRegistry) external returns (DetoxHookV2) {
+        return _deployDetoxHookWithSaltWithRegistry(salt, priceRegistry);
     }
     
     /// @notice External wrapper for hook validation (for try-catch)
@@ -362,14 +377,46 @@ contract DeployDetoxHookComplete is Script {
         return salt;
     }
     
+    /// @notice Mine the correct salt for DetoxHook deployment with a real PriceRegistry
+    function _mineHookSaltWithRegistry(address priceRegistry) internal view returns (bytes32 salt) {
+        console.log("=== Mining Hook Address with PriceRegistry ===");
+        console.log("Required flags:", HOOK_FLAGS);
+        console.log("CREATE2 Deployer:", CREATE2_DEPLOYER);
+        console.log("Price Registry:", priceRegistry);
+        console.log("Mining for address with correct flag bits and Price Registry...");
+        
+        // Prepare creation code with constructor arguments
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
+        bytes memory constructorArgs = abi.encode(
+            poolManager,
+            deployer,
+            ChainAddresses.getPythOracle(block.chainid),
+            priceRegistry
+        );
+        
+        console.log("Constructor arguments:");
+        console.log("  Pool Manager:", address(poolManager));
+        console.log("  Owner:", deployer);
+        console.log("  Oracle:", ChainAddresses.getPythOracle(block.chainid));
+        console.log("  Price Registry:", priceRegistry);
+        
+        // Mine the salt using HookMiner
+        address expectedAddress;
+        (expectedAddress, salt) = HookMiner.find(CREATE2_DEPLOYER, HOOK_FLAGS, creationCode, constructorArgs);
+        
+        console.log("=== HookMiner Results ===");
+        console.log("Salt found:", vm.toString(salt));
+        console.log("Expected hook address:", expectedAddress);
+        console.log("Address flags:", uint160(expectedAddress) & HookMiner.FLAG_MASK);
+        console.log("Required flags:", HOOK_FLAGS);
+        console.log("Flags match:", (uint160(expectedAddress) & HookMiner.FLAG_MASK) == HOOK_FLAGS);
+        
+        return salt;
+    }
+    
     /// @notice Deploy DetoxHook using CREATE2 with the given salt
     function _deployDetoxHookWithSalt(bytes32 salt) internal returns (DetoxHookV2) {
         console.log("=== CREATE2 Deployment ===");
-        
-        // First deploy PriceRegistry
-        console.log("Deploying PriceRegistry...");
-        PriceRegistry priceRegistry = new PriceRegistry(deployer);
-        console.log("PriceRegistry deployed at:", address(priceRegistry));
         
         // Prepare deployment data with correct constructor arguments
         bytes memory creationCode = type(DetoxHookV2).creationCode;
@@ -377,7 +424,94 @@ contract DeployDetoxHookComplete is Script {
             poolManager,
             deployer,
             ChainAddresses.getPythOracle(block.chainid),
-            address(priceRegistry)
+            address(0) // priceRegistry placeholder - this function is deprecated
+        );
+        bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
+        
+        // Calculate expected address for verification
+        address expectedAddress = HookMiner.computeAddress(CREATE2_DEPLOYER, uint256(salt), deploymentData);
+        
+        console.log("Expected address:", expectedAddress);
+        console.log("Using CREATE2 Deployer:", CREATE2_DEPLOYER);
+        console.log("Deployment data length:", deploymentData.length);
+        
+        // Check if CREATE2 deployer exists
+        if (CREATE2_DEPLOYER.code.length == 0) {
+            console.log("[ERROR] CREATE2 Deployer not found at:", CREATE2_DEPLOYER);
+            revert("CREATE2 Deployer contract not found - cannot deploy hook");
+        }
+        console.log("CREATE2 Deployer verified");
+        
+        // Check if address is already deployed
+        if (expectedAddress.code.length > 0) {
+            console.log("[ERROR] Contract already deployed at expected address");
+            console.log("Address:", expectedAddress);
+            console.log("Code length:", expectedAddress.code.length);
+            revert("Hook deployment failed: contract already exists at expected address");
+        }
+        
+        // The CREATE2 Deployer Proxy expects: salt (32 bytes) + creation code
+        bytes memory callData = abi.encodePacked(salt, deploymentData);
+        console.log("Call data length:", callData.length);
+        
+        console.log("Executing CREATE2 deployment...");
+        (bool success, bytes memory returnData) = CREATE2_DEPLOYER.call(callData);
+        
+        if (!success) {
+            console.log("[ERROR] CREATE2 deployment call failed");
+            if (returnData.length > 0) {
+                console.log("Error data length:", returnData.length);
+                // Try to decode revert reason
+                if (returnData.length >= 4) {
+                    console.log("Error selector:", vm.toString(bytes4(returnData)));
+                }
+            }
+            revert("CREATE2 deployment failed - call unsuccessful");
+        }
+        
+        if (returnData.length != 20) {
+            console.log("[ERROR] Invalid return data length from CREATE2");
+            console.log("Expected: 20 bytes (address)");
+            console.log("Actual:", returnData.length, "bytes");
+            revert("CREATE2 deployment failed: invalid return data length");
+        }
+        
+        // Extract deployed address from return data
+        address deployedAddress = address(bytes20(returnData));
+        console.log("Deployed address:", deployedAddress);
+        
+        if (deployedAddress != expectedAddress) {
+            console.log("[ERROR] Deployment address mismatch");
+            console.log("Expected:", expectedAddress);
+            console.log("Deployed:", deployedAddress);
+            revert("CREATE2 deployment failed: address mismatch");
+        }
+        
+        // Verify the contract was actually deployed
+        if (deployedAddress.code.length == 0) {
+            console.log("[ERROR] No code found at deployed address");
+            console.log("Address:", deployedAddress);
+            revert("CREATE2 deployment failed: no contract code at deployed address");
+        }
+        
+        console.log("[SUCCESS] CREATE2 deployment successful");
+        console.log("Contract deployed at:", deployedAddress);
+        console.log("Contract code size:", deployedAddress.code.length, "bytes");
+        
+        return DetoxHookV2(payable(deployedAddress));
+    }
+    
+    /// @notice Deploy DetoxHook using CREATE2 with the given salt and PriceRegistry
+    function _deployDetoxHookWithSaltWithRegistry(bytes32 salt, address priceRegistry) internal returns (DetoxHookV2) {
+        console.log("=== CREATE2 Deployment with PriceRegistry ===");
+        
+        // Prepare deployment data with correct constructor arguments
+        bytes memory creationCode = type(DetoxHookV2).creationCode;
+        bytes memory constructorArgs = abi.encode(
+            poolManager,
+            deployer,
+            ChainAddresses.getPythOracle(block.chainid),
+            priceRegistry
         );
         bytes memory deploymentData = abi.encodePacked(creationCode, constructorArgs);
         
@@ -651,7 +785,11 @@ contract DeployDetoxHookComplete is Script {
         uint256 totalETHNeeded = ethAmount1 + ethAmount2;
         uint256 totalUSDCNeeded = LIQUIDITY_USDC_AMOUNT * 2; // For both pools
         
-        // Comprehensive safety checks for liquidity operations
+        // Ensure approval for USDC BEFORE validation
+        console.log("[SAFETY] Ensuring USDC approval before validation...");
+        SafetyChecks.ensureApproval(usdc, deployer, address(modifyLiquidityRouter), totalUSDCNeeded);
+        
+        // Comprehensive safety checks for liquidity operations (after approval)
         SafetyChecks.validateLiquidityOperation(
             usdc,
             deployer,
@@ -659,9 +797,6 @@ contract DeployDetoxHookComplete is Script {
             totalETHNeeded,
             address(modifyLiquidityRouter)
         );
-        
-        // Ensure approval for USDC
-        SafetyChecks.ensureApproval(usdc, deployer, address(modifyLiquidityRouter), totalUSDCNeeded);
         
         console.log("Adding liquidity to Pool 1:");
         console.log("  USDC Amount:", LIQUIDITY_USDC_AMOUNT);

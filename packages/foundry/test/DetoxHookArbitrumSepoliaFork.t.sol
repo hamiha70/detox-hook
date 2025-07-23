@@ -157,8 +157,10 @@ contract DetoxHookArbitrumSepoliaFork is Test {
         // Prepare creation code and constructor arguments (4 parameters now)
         bytes memory creationCode = type(DetoxHookV2).creationCode;
         bytes memory constructorArgs = abi.encode(
-            address(manager), 
-            address(mockRegistry) // PriceRegistry
+            address(manager),           // poolManager
+            address(this),              // owner (test contract)
+            0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF, // Pyth oracle on Arbitrum Sepolia
+            address(mockRegistry)       // priceRegistry
         );
         
         // Mine the salt using HookMiner
