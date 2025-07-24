@@ -111,7 +111,7 @@ contract DetoxHookUnichainSepoliaFork is DetoxHookForkTestBase(1301) {
     // ============ Test Functions ============
     
     /// @notice Test Unichain Sepolia infrastructure is working
-    function test_UnichainSepoliaInfrastructure() public {
+    function test_UnichainSepoliaInfrastructure() public view {
         // Verify we're on the correct network
         assertEq(block.chainid, 1301, "Should be on Unichain Sepolia");
         
@@ -133,7 +133,7 @@ contract DetoxHookUnichainSepoliaFork is DetoxHookForkTestBase(1301) {
     }
     
     /// @notice Test fork setup is working correctly
-    function test_ForkSetup() public {
+    function test_ForkSetup() public view {
         // Verify chain information
         assertEq(CHAIN_ID, 1301, "Chain ID should be Unichain Sepolia");
         assertEq(keccak256(bytes(chainName)), keccak256(bytes("Unichain Sepolia")), "Chain name should be correct");
@@ -146,7 +146,7 @@ contract DetoxHookUnichainSepoliaFork is DetoxHookForkTestBase(1301) {
     }
     
     /// @notice Test hook deployment on Unichain
-    function test_HookDeployment() public {
+    function test_HookDeployment() public view {
         // Verify hook is deployed
         assertTrue(address(hook) != address(0), "Hook should be deployed");
         assertTrue(address(hook).code.length > 0, "Hook should have code");
@@ -219,7 +219,7 @@ contract DetoxHookUnichainSepoliaFork is DetoxHookForkTestBase(1301) {
     }
     
     /// @notice Test Pyth oracle functionality on Unichain
-    function test_PythOracleReads() public {
+    function test_PythOracleReads() public view {
         address pythOracle = ChainAddresses.getPythOracle(CHAIN_ID);
         IPyth pyth = IPyth(pythOracle);
         
@@ -244,7 +244,7 @@ contract DetoxHookUnichainSepoliaFork is DetoxHookForkTestBase(1301) {
     }
     
     /// @notice Test network-specific behavior differences
-    function test_NetworkSpecificBehavior() public {
+    function test_NetworkSpecificBehavior() public view {
         // Test any Unichain-specific behavior
         console.log("=== Unichain Network Specifics ===");
         console.log("Chain ID:", block.chainid);
@@ -287,7 +287,7 @@ contract DetoxHookUnichainSepoliaFork is DetoxHookForkTestBase(1301) {
     }
     
     /// @notice Test cross-network compatibility
-    function test_CrossNetworkCompatibility() public {
+    function test_CrossNetworkCompatibility() public view {
         // Verify that the same hook logic works across networks
         console.log("=== Cross-Network Compatibility Test ===");
         

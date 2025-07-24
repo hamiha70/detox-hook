@@ -111,7 +111,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
     // ============ Test Functions ============
     
     /// @notice Test Arbitrum Sepolia infrastructure is working
-    function test_ArbitrumSepoliaInfrastructure() public {
+    function test_ArbitrumSepoliaInfrastructure() public view {
         // Verify we're on the correct network
         assertEq(block.chainid, 421614, "Should be on Arbitrum Sepolia");
         
@@ -133,7 +133,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
     }
     
     /// @notice Test fork setup is working correctly
-    function test_ForkSetup() public {
+    function test_ForkSetup() public view {
         // Verify chain information
         assertEq(CHAIN_ID, 421614, "Chain ID should be Arbitrum Sepolia");
         assertEq(keccak256(bytes(chainName)), keccak256(bytes("Arbitrum Sepolia")), "Chain name should be correct");
@@ -146,7 +146,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
     }
     
     /// @notice Test hook deployment is working
-    function test_HookDeployment() public {
+    function test_HookDeployment() public view {
         // Verify hook is deployed
         assertTrue(address(hook) != address(0), "Hook should be deployed");
         assertTrue(address(hook).code.length > 0, "Hook should have code");
@@ -165,7 +165,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
     }
     
     /// @notice Test hook permissions are set correctly
-    function test_HookPermissions() public {
+    function test_HookPermissions() public view {
         Hooks.Permissions memory permissions = hook.getHookPermissions();
         
         assertTrue(permissions.beforeSwap, "beforeSwap should be enabled");
@@ -182,7 +182,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
     }
     
     /// @notice Test pool initialization
-    function test_PoolInitialization() public {
+    function test_PoolInitialization() public view {
         // Verify pool is initialized
         (uint160 sqrtPriceX96, int24 tick, , ) = StateLibrary.getSlot0(manager, poolId);
         
@@ -196,7 +196,7 @@ contract DetoxHookArbitrumSepoliaFork is DetoxHookForkTestBase(421614) {
     }
     
     /// @notice Test real Pyth oracle reads
-    function test_RealPythOracleReads() public {
+    function test_RealPythOracleReads() public view {
         address pythOracle = ChainAddresses.getPythOracle(CHAIN_ID);
         IPyth pyth = IPyth(pythOracle);
         

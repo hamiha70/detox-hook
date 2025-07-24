@@ -9,9 +9,10 @@ import { Currency, CurrencyLibrary } from "@uniswap/v4-core/src/types/Currency.s
 import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { SqrtPriceMath } from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
-import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import { SwapParams, ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { BeforeSwapDelta, toBeforeSwapDelta } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import { LiquidityAmounts } from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import { console } from "forge-std/console.sol";
 
 /// @title HookLibrary
@@ -228,6 +229,123 @@ library HookLibrary {
 
         // Consider reasonable if swap is less than 10% of total liquidity
         isReasonable = swapAmount < (uint256(liquidity) / 10);
+    }
+
+    // ============ Proper Uniswap V4 Liquidity Mathematics ============
+
+    /// @notice Calculate proper ETH/USDC liquidity using Uniswap V4 mathematics  
+    /// @param targetETHAmount Target ETH amount to provide (e.g., 0.1 ETH)
+    /// @param ethPriceInUSDC Current ETH price in USDC (e.g., 3600)
+    /// @param rangePercent Liquidity range percentage (e.g., 10 for ±10%)
+    /// @param tickSpacing Tick spacing for the pool (e.g., 60)
+    /// @return ethAmount ETH amount needed
+    /// @return usdcAmount USDC amount needed
+    /// @return liquidityParams Complete ModifyLiquidityParams for deployment
+    function calculateETHUSDCLiquidityV4(
+        uint256 targetETHAmount,
+        uint256 ethPriceInUSDC,
+        uint256 rangePercent,
+        int24 tickSpacing
+    ) internal pure returns (
+        uint256 ethAmount,
+        uint256 usdcAmount,
+        ModifyLiquidityParams memory liquidityParams
+    ) {
+        // Step 1: Calculate current price using the working approach from DetoxHookV2.t.sol
+        // For ETH/USDC pool where ETH is currency0, USDC is currency1:
+        // Price = currency1/currency0 = USDC/ETH in 1e18 precision
+        // For ethPriceInUSDC (e.g., 3600): (3600 * 1e6) / (1 * 1e18) = 3.6e-9
+        // To get 1e18 precision: 3.6e-9 * 1e18 = 3.6e9
+        uint256 currentPrice = ethPriceInUSDC * 1000000; // ethPriceInUSDC * 1e6 (simplified)
+        uint160 sqrtPriceX96 = priceToSqrtPrice(currentPrice);
+        
+        // Step 2: Calculate tick range for ±rangePercent
+        // Note: currentTick calculated but not used - we calculate bounds directly from prices
+        
+        // Calculate price bounds (±rangePercent) using the same approach
+        uint256 lowerPriceInUSDC = (ethPriceInUSDC * (100 - rangePercent)) / 100;
+        uint256 upperPriceInUSDC = (ethPriceInUSDC * (100 + rangePercent)) / 100;
+        
+        uint256 lowerPrice = lowerPriceInUSDC * 1000000; // Convert to Uniswap format
+        uint256 upperPrice = upperPriceInUSDC * 1000000; // Convert to Uniswap format
+        
+        uint160 sqrtPriceLowerX96 = priceToSqrtPrice(lowerPrice);
+        uint160 sqrtPriceUpperX96 = priceToSqrtPrice(upperPrice);
+        
+        int24 tickLower = TickMath.getTickAtSqrtPrice(sqrtPriceLowerX96);
+        int24 tickUpper = TickMath.getTickAtSqrtPrice(sqrtPriceUpperX96);
+        
+        // Step 3: Round ticks to tick spacing
+        tickLower = (tickLower / tickSpacing) * tickSpacing;
+        tickUpper = (tickUpper / tickSpacing) * tickSpacing;
+        
+        // Ensure tickUpper > tickLower
+        if (tickUpper <= tickLower) {
+            tickUpper = tickLower + tickSpacing;
+        }
+        
+        // Step 4: Calculate liquidity from target ETH amount
+        // Assume we want to provide targetETHAmount of ETH
+        uint128 liquidityFromETH = LiquidityAmounts.getLiquidityForAmount0(
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            targetETHAmount
+        );
+        
+        // Step 5: Calculate required token amounts for this liquidity
+        (ethAmount, usdcAmount) = LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            liquidityFromETH
+        );
+        
+        // Step 6: Create ModifyLiquidityParams
+        liquidityParams = ModifyLiquidityParams({
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            liquidityDelta: int256(uint256(liquidityFromETH)),
+            salt: 0
+        });
+        
+        // Step 7: Apply minimums for meaningful liquidity
+        if (ethAmount < 0.001 ether) ethAmount = 0.001 ether;
+        if (usdcAmount < 1000e6) usdcAmount = 1000e6;
+    }
+
+    /// @notice Legacy wrapper for backward compatibility with tests
+    /// @param targetUSDCLiquidity Target USDC amount (converted to ETH target)
+    /// @param ethPriceInUSDC ETH price in USDC
+    /// @param rangePercent Range percentage (±%)
+    /// @return ethAmount ETH amount needed
+    /// @return usdcAmount USDC amount needed  
+    /// @return tickLower Lower tick (from liquidityParams)
+    /// @return tickUpper Upper tick (from liquidityParams)
+    function calculateETHUSDCLiquidity(
+        uint256 targetUSDCLiquidity,
+        uint256 ethPriceInUSDC,
+        uint256 rangePercent
+    ) internal pure returns (
+        uint256 ethAmount,
+        uint256 usdcAmount,
+        int24 tickLower,
+        int24 tickUpper
+    ) {
+        // Convert USDC target to ETH target (for backward compatibility)
+        uint256 targetETH = (targetUSDCLiquidity * 1e18) / (ethPriceInUSDC * 1e6);
+        
+        // Use proper V4 math with default tick spacing
+        ModifyLiquidityParams memory liquidityParams;
+        (ethAmount, usdcAmount, liquidityParams) = calculateETHUSDCLiquidityV4(
+            targetETH, 
+            ethPriceInUSDC, 
+            rangePercent, 
+            60 // Default tick spacing
+        );
+        
+        // Extract ticks for backward compatibility
+        tickLower = liquidityParams.tickLower;
+        tickUpper = liquidityParams.tickUpper;
     }
 
     // ============ Math Utilities ============

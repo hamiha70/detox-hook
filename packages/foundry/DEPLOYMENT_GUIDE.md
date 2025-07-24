@@ -138,6 +138,261 @@ wait
 
 ---
 
+## 🚀 **DEPLOYMENT SCRIPT ENHANCEMENT STRATEGY**
+
+### **📋 IMPLEMENTATION CHALLENGES & SOLUTIONS**
+
+The `DeployDetoxHookComplete.s.sol` script requires enhancement to meet production requirements. Here are the specific approaches for each critical challenge:
+
+#### **1. Contract Address Empty Check**
+
+**Challenge**: Reliably detect if a contract exists at an address and is the correct type.
+
+**✅ SOLUTION - Dual Validation Approach**:
+```solidity
+function _isContractDeployed(address contractAddress) internal view returns (bool) {
+    // Method 1: Check code length (most reliable)
+    if (contractAddress.code.length == 0) return false;
+    
+    // Method 2: Additional validation - try calling a view function
+    try DetoxHookV2(payable(contractAddress)).poolManager() returns (IPoolManager) {
+        return true;  // Contract exists and is functional
+    } catch {
+        return false; // Contract exists but is not our expected contract
+    }
+}
+```
+
+**Why This Approach**:
+- `code.length > 0` is the Ethereum standard for contract existence
+- Function call validation ensures it's the correct contract type
+- Handles edge cases where wrong contract exists at expected address
+- Provides clear success/failure indication
+
+#### **2. Pool Already Initialized Check**
+
+**Challenge**: PoolManager has no `isPoolInitialized()` function. Using `getSlot0()` directly can revert.
+
+**✅ SOLUTION - Hybrid Try/Catch Pattern**:
+```solidity
+function _isPoolInitialized(PoolKey memory poolKey) internal view returns (bool) {
+    try poolManager.getSlot0(poolKey.toId()) returns (
+        uint160 sqrtPriceX96,
+        int24 tick,
+        uint24 protocolFee,
+        uint24 lpFee
+    ) {
+        // If getSlot0 succeeds and sqrtPriceX96 != 0, pool is initialized
+        return sqrtPriceX96 != 0;
+    } catch {
+        // If getSlot0 reverts, pool doesn't exist/isn't initialized
+        return false;
+    }
+}
+
+function _ensurePoolInitialized(PoolKey memory poolKey, uint160 sqrtPriceX96) internal {
+    bool isInitialized = _isPoolInitialized(poolKey);
+    
+    if (isInitialized) {
+        console.log("[SKIP] Pool already initialized");
+        return;
+    }
+    
+    // Initialize with error handling
+    try poolManager.initialize(poolKey, sqrtPriceX96) returns (int24 tick) {
+        console.log("[SUCCESS] Pool initialized at tick:", tick);
+        emit PoolInitialized(poolKey.toId(), sqrtPriceX96, poolKey.tickSpacing);
+    } catch Error(string memory reason) {
+        if (keccak256(bytes(reason)) == keccak256(bytes("AlreadyInitialized"))) {
+            console.log("[SKIP] Pool already initialized (race condition)");
+        } else {
+            revert(string(abi.encodePacked("Pool initialization failed: ", reason)));
+        }
+    }
+}
+```
+
+**Why This Approach**:
+- Safe: Try/catch prevents reverts from breaking deployment
+- Reliable: Checks actual pool state rather than assuming
+- Idempotent: Handles race conditions gracefully
+- Clear logging: Shows exactly what happened
+
+#### **3. Resource Estimation & Management**
+
+**Challenge**: ETH/USDC are scarce resources. Need accurate upfront estimation for liquidity, hook funding, and operations.
+
+**✅ SOLUTION - Separate Estimation Script + Shared Parameters**:
+
+**A. Create `EstimateDeploymentResources.s.sol`**:
+```solidity
+contract EstimateDeploymentResources is Script {
+    using PoolParameters for uint256;
+    
+    function run() external view {
+        uint256 chainId = block.chainid;
+        
+        // Get parameters from PoolParameters.sol
+        DeploymentParams memory params = PoolParameters.getDeploymentParams(chainId);
+        
+        uint256 totalETHNeeded = _calculateTotalETHNeeded(params);
+        uint256 totalUSDCNeeded = _calculateTotalUSDCNeeded(params);
+        
+        console.log("=== DEPLOYMENT RESOURCE ESTIMATION ===");
+        console.log("Chain:", PoolParameters.getChainName(chainId));
+        console.log("Hook Funding ETH:", params.hookFundingAmount);
+        console.log("Hook 1000+ invocations:", params.hookFundingAmount, "(should handle 1000+ calls)");
+        console.log("Liquidity ETH Pool 1:", _calculateLiquidityETH(params.pool1Price, params.liquidityUSDCAmount));
+        console.log("Liquidity ETH Pool 2:", _calculateLiquidityETH(params.pool2Price, params.liquidityUSDCAmount));
+        console.log("Buffer ETH (10%):", totalETHNeeded / 10);
+        console.log("TOTAL ETH NEEDED:", totalETHNeeded);
+        console.log("TOTAL USDC NEEDED:", totalUSDCNeeded);
+        
+        // Validation against current balances
+        address deployer = vm.addr(vm.envUint(PoolParameters.getDeploymentKeyEnvVar(chainId)));
+        console.log("Deployer ETH balance:", deployer.balance);
+        console.log("Sufficient ETH:", deployer.balance >= totalETHNeeded ? "YES" : "NO");
+    }
+    
+    function getResourceEstimate(uint256 chainId) external view returns (uint256 ethNeeded, uint256 usdcNeeded) {
+        DeploymentParams memory params = PoolParameters.getDeploymentParams(chainId);
+        return (_calculateTotalETHNeeded(params), _calculateTotalUSDCNeeded(params));
+    }
+}
+```
+
+**B. Enhance `PoolParameters.sol`**:
+```solidity
+library PoolParameters {
+    struct DeploymentParams {
+        uint256 hookFundingAmount;      // ETH for hook (1000+ invocations)
+        uint256 liquidityUSDCAmount;    // USDC per pool
+        uint256 pool1Price;             // ETH price for pool 1 (2500)
+        uint256 pool2Price;             // ETH price for pool 2 (2600)
+        uint256 bufferPercentage;       // Safety buffer (10%)
+        uint256 demoAccountFunding;     // USDC for demo accounts
+    }
+    
+    function getDeploymentParams(uint256 chainId) internal pure returns (DeploymentParams memory) {
+        return DeploymentParams({
+            hookFundingAmount: 0.01 ether,        // Increased for 1000+ invocations
+            liquidityUSDCAmount: 1e6,             // 1 USDC per pool
+            pool1Price: 2500,                     // ETH = 2500 USDC
+            pool2Price: 2600,                     // ETH = 2600 USDC
+            bufferPercentage: 10,                 // 10% safety buffer
+            demoAccountFunding: 10_000e6          // 10k USDC per demo account
+        });
+    }
+}
+```
+
+**C. Integration in Main Script**:
+```solidity
+function _validateResourcesBeforeDeployment() internal {
+    console.log("=== RESOURCE VALIDATION ===");
+    
+    // Import estimation logic
+    EstimateDeploymentResources estimator = new EstimateDeploymentResources();
+    (uint256 ethNeeded, uint256 usdcNeeded) = estimator.getResourceEstimate(block.chainid);
+    
+    console.log("ETH needed:", ethNeeded);
+    console.log("USDC needed:", usdcNeeded);
+    console.log("Deployer ETH balance:", deployer.balance);
+    
+    require(deployer.balance >= ethNeeded, "Insufficient ETH for deployment");
+    // USDC will be minted as needed (MockUSDC)
+    
+    console.log("[SUCCESS] Resource validation passed");
+}
+```
+
+**Why This Approach**:
+- **Modular**: Separate script can be run independently
+- **Reusable**: Main script imports the estimation logic
+- **Configurable**: All parameters centralized in PoolParameters.sol
+- **Practical**: Focuses on actual resource needs (ETH, USDC) not gas costs
+- **Hook-focused**: Ensures hook can handle 1000+ invocations
+
+#### **4. PublicRPCURL.sol Integration**
+
+**Challenge**: Current script has hardcoded RPC selection logic instead of using the established PublicRPCURL.sol infrastructure.
+
+**✅ SOLUTION - Full PublicRPCURL.sol Integration**:
+```solidity
+import { PublicRPCURL } from "./PublicRPCURL.sol";
+
+function _selectOptimalRPC() internal returns (string memory selectedRPC) {
+    uint256 chainId = block.chainid;
+    
+    // Try environment variable first
+    string memory envVarName = PublicRPCURL.getEnvVarName(chainId);
+    try vm.envString(envVarName) returns (string memory customRPC) {
+        if (bytes(customRPC).length > 0) {
+            console.log("[RPC] Using custom RPC from", envVarName);
+            return customRPC;
+        }
+    } catch {
+        // Environment variable not set, continue to fallback
+    }
+    
+    // Try backup environment variable
+    string memory backupEnvVar = PublicRPCURL.getBackupEnvVarName(chainId);
+    try vm.envString(backupEnvVar) returns (string memory backupRPC) {
+        if (bytes(backupRPC).length > 0) {
+            console.log("[RPC] Using backup RPC from", backupEnvVar);
+            return backupRPC;
+        }
+    } catch {
+        // Backup not set either
+    }
+    
+    // Fall back to public RPC
+    console.log("[RPC] Using public RPC (may be rate-limited)");
+    console.log("[RPC] Consider setting", envVarName, "for better reliability");
+    return PublicRPCURL.getPrimaryRPC(chainId);
+}
+
+function run() external {
+    // Use PublicRPCURL for RPC selection
+    string memory rpcUrl = _selectOptimalRPC();
+    console.log("Selected RPC:", rpcUrl);
+    
+    // Get deployment key using PublicRPCURL naming convention  
+    string memory keyEnvVar = string.concat("DEPLOYMENT_KEY_", vm.toString(block.chainid));
+    uint256 deployerPrivateKey = vm.envUint(keyEnvVar);
+    
+    // ... rest of deployment logic
+}
+```
+
+**Why This Approach**:
+- **Consistent**: Uses established PublicRPCURL.sol patterns
+- **Reliable**: Implements full failover chain
+- **Configurable**: Environment variables take precedence
+- **Informative**: Clear logging of RPC source selection
+
+### **🎯 IMPLEMENTATION SUMMARY**
+
+**✅ FINAL APPROACH**:
+
+1. **Contract Existence**: Code length + function call validation
+2. **Pool Initialization**: Try/catch pattern with race condition handling  
+3. **Resource Estimation**: Separate script + shared PoolParameters.sol configuration
+4. **RPC Selection**: Full PublicRPCURL.sol integration with failover chain
+
+**📦 FILES TO CREATE/MODIFY**:
+- `EstimateDeploymentResources.s.sol` (new)
+- `PoolParameters.sol` (enhance with DeploymentParams)
+- `DeployDetoxHookComplete.s.sol` (integrate all enhancements)
+
+**🔧 KEY BENEFITS**:
+- **Modular**: Each component can be tested independently
+- **Reliable**: Robust error handling and fallback mechanisms
+- **Maintainable**: Centralized configuration in PoolParameters.sol
+- **Production-ready**: Handles all edge cases and resource constraints
+
+---
+
 ## 🚀 **PRODUCTION DEPLOYMENT COMMAND**
 
 ### **Current Working Deployment**
@@ -195,6 +450,44 @@ if (expectedHookAddress.code.length > 0) {
 
 ## 🚀 **COMPLETE DEPLOYMENT INSTRUCTIONS**
 
+### **Step 0: Resource Estimation (RECOMMENDED)**
+
+Before deployment, estimate the exact ETH and USDC requirements using the dedicated resource estimation script:
+
+```bash
+# Navigate to foundry directory
+cd packages/foundry
+
+# Run resource estimation for your target network
+forge script script/EstimateDeploymentResources.s.sol:EstimateDeploymentResources --sig "run()" -v
+
+# Example output:
+# === DETOXHOOK DEPLOYMENT RESOURCE ESTIMATION ===
+# Chain ID: 421614
+# Chain Name: Arbitrum Sepolia
+# 
+# ETH REQUIREMENTS:
+#   Hook Funding: 0.010000 ETH
+#   Pool 1 ETH needed: 0.047065 ETH
+#   Pool 2 ETH needed: 0.047218 ETH
+#   Demo Accounts: 0.020000 ETH
+#   Buffer: 0.622846 ETH
+#   TOTAL ETH: 0.747416 ETH
+# 
+# USDC REQUIREMENTS (MINTED):
+#   Pool 1 Liquidity: 1000 USDC
+#   Pool 2 Liquidity: 1000 USDC
+#   Demo Accounts: 20000 USDC
+#   TOTAL USDC: 22000 USDC
+```
+
+**Key Features of Resource Estimation**:
+- **Proper Uniswap V4 Mathematics**: Uses `calculateETHUSDCLiquidityV4` with TickMath and LiquidityAmounts libraries
+- **Realistic ETH Targets**: 0.1 ETH per pool with ±10% concentrated liquidity range
+- **Liquidity-Swap Validation**: Ensures test swap amounts follow the 1/1000th rule
+- **Multi-Chain Support**: Automatically detects chain and adjusts parameters
+- **Balance Validation**: Checks deployer balance against requirements
+
 ### **Step 1: Environment Setup**
 
 ```bash
@@ -202,9 +495,9 @@ if (expectedHookAddress.code.length > 0) {
 export DEPLOYMENT_KEY_421614="your_private_key_here"
 export RPC_URL_421614="https://sepolia-rollup.arbitrum.io/rpc"
 
-# Verify balances (minimum requirements)
-# - ETH: 0.05 ETH
-# - USDC: 10 USDC
+# Verify balances based on resource estimation output
+# Ensure deployer has at least the TOTAL ETH amount shown above
+# USDC will be minted automatically (MockUSDC strategy)
 ```
 
 ### **Step 2: Run Complete Deployment**

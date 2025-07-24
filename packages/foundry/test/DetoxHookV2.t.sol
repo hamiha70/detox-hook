@@ -418,7 +418,7 @@ contract DetoxHookV2Test is Test, Deployers {
     }
 
     /// @notice Test basic setup validation
-    function test_SetupValidation() public {
+    function test_SetupValidation() public view {
         console.log("=== TEST: Setup Validation ===");
         
         // Verify hook deployment
