@@ -133,4 +133,61 @@ contract DeploySwapRouterFixed is Script {
         console.log("yarn swap-router --swap 0.00002 false");
         console.log("");
     }
+
+    /// @notice Test deployment configuration without broadcasting
+    /// @dev This function validates all deployment parameters and dependencies
+    function testDeployment() external {
+        // Skip this test on local Anvil since it requires real network infrastructure
+        vm.skip(block.chainid == 31337);
+        
+        console.log("=== TESTING SWAPROUTERFIXED DEPLOYMENT CONFIGURATION ===");
+        console.log("Chain ID:", block.chainid);
+        console.log("Chain Name:", ChainAddresses.getChainName(block.chainid));
+        
+        // Initialize contracts (validates addresses exist)
+        _initializeContracts();
+        
+        // Validate all required addresses
+        console.log("=== Validating Dependencies ===");
+        
+        // Check PoolSwapTest
+        address poolSwapTest = ChainAddresses.getPoolSwapTest(block.chainid);
+        require(poolSwapTest != address(0), "PoolSwapTest address not set for this chain");
+        require(poolSwapTest.code.length > 0, "PoolSwapTest contract not deployed");
+        console.log("[SUCCESS] PoolSwapTest validated:", poolSwapTest);
+        
+        // Check DetoxHook (hardcoded address)
+        address detoxHook = 0x07Fae0457E31b0047363d63ac3Dc3e446abf0088;
+        require(detoxHook != address(0), "DetoxHook address is zero");
+        require(detoxHook.code.length > 0, "DetoxHook contract not deployed");
+        console.log("[SUCCESS] DetoxHook validated:", detoxHook);
+        
+        // Check USDC
+        address usdc = ChainAddresses.getUSDC(block.chainid);
+        require(usdc != address(0), "USDC address not set for this chain");
+        require(usdc.code.length > 0, "USDC contract not deployed");
+        console.log("[SUCCESS] USDC validated:", usdc);
+        
+        // Validate pool key creation
+        PoolKey memory poolKey = PoolParameters.getPoolKey1(block.chainid, detoxHook, usdc);
+        console.log("[SUCCESS] Pool Key created successfully:");
+        console.log("  Currency0:", Currency.unwrap(poolKey.currency0));
+        console.log("  Currency1:", Currency.unwrap(poolKey.currency1));
+        console.log("  Fee:", poolKey.fee);
+        console.log("  TickSpacing:", poolKey.tickSpacing);
+        console.log("  Hooks:", address(poolKey.hooks));
+        
+        // Validate currency ordering (ETH should be currency0)
+        require(Currency.unwrap(poolKey.currency0) == address(0), "ETH should be currency0");
+        require(Currency.unwrap(poolKey.currency1) == usdc, "USDC should be currency1");
+        console.log("[SUCCESS] Currency ordering validated (ETH < USDC)");
+        
+        console.log("");
+        console.log("[SUCCESS] All deployment configuration tests PASSED!");
+        console.log("[SUCCESS] SwapRouterFixed deployment is ready for:", ChainAddresses.getChainName(block.chainid));
+        console.log("");
+        console.log("To deploy, run:");
+        console.log("make deploy-swap-router-arbitrum-sepolia");
+        console.log("");
+    }
 } 

@@ -29,7 +29,7 @@ deploy-swap-router-arbitrum-sepolia:
 		exit 1; \
 	fi
 	@echo "📝 Using DEPLOYMENT_KEY for deployment"
-	forge script script/DeploySwapRouter.s.sol:DeploySwapRouter \
+	forge script script/DeploySwapRouterFixed.s.sol:DeploySwapRouterFixed \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		--broadcast \
 		--verify \
@@ -40,7 +40,7 @@ deploy-swap-router-arbitrum-sepolia:
 test-swap-router-deployment:
 	@echo "🧪 Testing SwapRouter deployment configuration..."
 	@echo "📋 This will validate deployment parameters without broadcasting"
-	forge script script/DeploySwapRouter.s.sol:DeploySwapRouter \
+	forge script script/DeploySwapRouterFixed.s.sol:DeploySwapRouterFixed \
 		--sig "testDeployment()" \
 		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
 		-vvvv
@@ -57,45 +57,6 @@ update-frontend-address:
 
 # Deploy and generate ABIs
 deploy-and-generate-abis: deploy generate-abis
-
-# Deploy DetoxHookV2 Complete (production deployment with all components)
-deploy-detox-complete:
-	@echo "🚀 Complete DetoxHookV2 Deployment..."
-	@echo "⚠️  Note: Using DetoxHookV2.s.sol - the production-ready deployment script"
-	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
-		--rpc-url $(RPC_URL) \
-		--broadcast \
-		--verify \
-		--verifier blockscout \
-		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
-		-vvvv
-
-# Deploy DetoxHookV2 Complete to Arbitrum Sepolia
-deploy-detox-complete-arbitrum-sepolia:
-	@echo "🚀 Complete DetoxHookV2 Deployment to Arbitrum Sepolia..."
-	@echo "⚠️  Note: Using DetoxHookV2.s.sol - the production-ready deployment script"
-	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
-		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
-		--broadcast \
-		--verify \
-		--verifier blockscout \
-		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
-		-vvvv
-
-# Test DetoxHookV2 Complete deployment on fork
-test-detox-complete-fork:
-	@echo "🧪 Testing DetoxHookV2 Complete deployment on Arbitrum Sepolia fork..."
-	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
-		--fork-url https://sepolia-rollup.arbitrum.io/rpc \
-		--broadcast \
-		-vvvv
-
-# Dry run DetoxHookV2 Complete deployment (no broadcast)
-dry-run-detox-complete:
-	@echo "🔍 Dry run DetoxHookV2 Complete deployment..."
-	forge script script/DeployDetoxHookV2.s.sol:DeployDetoxHookV2 \
-		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
-		-vvvv
 
 # Generate TypeScript ABIs
 generate-abis:
@@ -132,19 +93,6 @@ test:
 # Verify contracts
 verify:
 	forge script script/VerifyAll.s.sol --ffi --rpc-url $(RPC_URL)
-
-# Deploy DetoxHook (legacy - use deploy-detox-hook-v2-arbitrum-sepolia instead)
-deploy-detox-hook-arbitrum-sepolia:
-	@echo "⚠️  WARNING: This target uses legacy deployment script!"
-	@echo "⚠️  Please use 'make deploy-detox-hook-v2-arbitrum-sepolia' for production deployment"
-	@echo "🚀 Legacy DetoxHook Deployment to Arbitrum Sepolia..."
-	forge script script/DeployDetoxHook.s.sol:DeployDetoxHook \
-		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
-		--broadcast \
-		--verify \
-		--verifier blockscout \
-		--verifier-url https://arbitrum-sepolia.blockscout.com/api \
-		-vvvv
 
 # Deploy DetoxHookV2 (current version) to Arbitrum Sepolia
 deploy-detox-hook-v2-arbitrum-sepolia:
