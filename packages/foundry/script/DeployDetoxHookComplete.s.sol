@@ -147,14 +147,9 @@ contract DeployDetoxHookComplete is Script {
         // Step 3: Deploy DetoxHook
         _deployDetoxHook();
         
-        // Final safety check - ensure hook is properly deployed before proceeding
-        if (address(hook) == address(0) || address(hook).code.length == 0) {
-            console.log("[ERROR] Hook deployment verification failed");
-            console.log("Hook address:", address(hook));
-            console.log("Hook code length:", address(hook).code.length);
-            revert("Deployment stopped: Hook deployment was not successful");
-        }
-        console.log("[VERIFIED] Hook deployment confirmed before proceeding");
+        // Verify DetoxHook deployment
+        _verifyContractDeployment(address(hook), "DetoxHook V2");
+        _verifyDetoxHookFunctionality(hook);
         
         // Step 4: Fund the hook
         _fundHook();
@@ -162,11 +157,18 @@ contract DeployDetoxHookComplete is Script {
         // Step 5: Initialize pools
         _initializePools();
         
+        // Verify pool initialization
+        _verifyPoolInitialization(poolKey1, "Pool 1 (ETH/USDC @ 3000)");
+        _verifyPoolInitialization(poolKey2, "Pool 2 (ETH/USDC @ 4000)");
+        
         // Step 6: Add liquidity
         _addLiquidity();
         
         // Step 7: Deploy SwapRouterFixed
         _deploySwapRouterFixed();
+        
+        // Verify SwapRouterFixed deployment
+        _verifyContractDeployment(address(swapRouterFixedInstance), "SwapRouterFixed");
         
         if (block.chainid == 31337) {
             _setupSwapperAndTestSwap();
@@ -214,6 +216,9 @@ contract DeployDetoxHookComplete is Script {
         console.log("MockUSDC Owner:", mockUsdc.owner());
         
         console.log("[PASS] MockUSDC deployed and balances sufficient");
+        
+        // Verify MockUSDC deployment
+        _verifyContractDeployment(address(mockUsdc), "MockUSDC");
         
         emit BalanceChecked(deployer, ethBalance, usdcBalance, true);
     }
@@ -263,6 +268,9 @@ contract DeployDetoxHookComplete is Script {
         // Deploy or reuse PriceRegistry with consistency check
         priceRegistry = _deployOrReusePriceRegistry();
         console.log("PriceRegistry ready at:", address(priceRegistry));
+        
+        // Verify PriceRegistry deployment
+        _verifyContractDeployment(address(priceRegistry), "PriceRegistry");
         
         // Mine the correct salt for hook address using real PriceRegistry
         bytes32 salt;
@@ -1237,5 +1245,121 @@ contract DeployDetoxHookComplete is Script {
         uint256 usdcAfter = controlUsdc.balanceOf(deployer);
         console.log("[CONTROL] Deployer ETH after:", ethAfter);
         console.log("[CONTROL] Deployer USDC after:", usdcAfter);
+    }
+
+    /// @notice Verify that a contract was actually deployed at the given address
+    function _verifyContractDeployment(address contractAddress, string memory contractName) internal view {
+        console.log("=== DEPLOYMENT VERIFICATION ===");
+        console.log("Verifying:", contractName);
+        console.log("Address:", contractAddress);
+        
+        // Check if contract exists
+        uint256 codeSize;
+        assembly {
+            codeSize := extcodesize(contractAddress)
+        }
+        
+        console.log("Code size:", codeSize, "bytes");
+        
+        if (codeSize == 0) {
+            console.log("[FAIL] No code found at address - deployment failed!");
+            revert(string(abi.encodePacked("Deployment verification failed: ", contractName, " not deployed")));
+        } else {
+            console.log("[SUCCESS] Contract deployed successfully");
+        }
+        
+        console.log("Block Explorer:", _getBlockExplorerUrl(contractAddress));
+        console.log("");
+    }
+
+    /// @notice Verify DetoxHook specific functionality after deployment
+    function _verifyDetoxHookFunctionality(DetoxHookV2 hookContract) internal view {
+        console.log("=== DETOXHOOK FUNCTIONALITY VERIFICATION ===");
+        
+        try hookContract.getHookPermissions() returns (Hooks.Permissions memory permissions) {
+            console.log("[SUCCESS] Hook permissions readable");
+            console.log("beforeSwap:", permissions.beforeSwap);
+            console.log("beforeSwapReturnDelta:", permissions.beforeSwapReturnDelta);
+            
+            // Verify expected permissions
+            if (!permissions.beforeSwap) {
+                revert("Hook verification failed: beforeSwap permission not set");
+            }
+            if (!permissions.beforeSwapReturnDelta) {
+                revert("Hook verification failed: beforeSwapReturnDelta permission not set");
+            }
+            
+            console.log("[SUCCESS] Hook permissions verified");
+        } catch {
+            console.log("[FAIL] Cannot read hook permissions");
+            revert("Hook verification failed: cannot read permissions");
+        }
+
+        try hookContract.poolManager() returns (IPoolManager pm) {
+            console.log("[SUCCESS] PoolManager readable:", address(pm));
+            if (address(pm) != address(poolManager)) {
+                revert("Hook verification failed: wrong PoolManager address");
+            }
+        } catch {
+            console.log("[FAIL] Cannot read PoolManager");
+            revert("Hook verification failed: cannot read PoolManager");
+        }
+
+        // Check ETH balance
+        uint256 hookBalance = address(hookContract).balance;
+        console.log("Hook ETH balance:", hookBalance);
+        if (hookBalance == 0) {
+            console.log("[WARNING] Hook has no ETH balance for gas");
+        } else {
+            console.log("[SUCCESS] Hook funded with ETH");
+        }
+        
+        console.log("[SUCCESS] DetoxHook functionality verified");
+        console.log("");
+    }
+
+    /// @notice Verify pool initialization
+    function _verifyPoolInitialization(PoolKey memory poolKey, string memory poolName) internal {
+        console.log("=== POOL VERIFICATION ===");
+        console.log("Verifying:", poolName);
+        
+        PoolId poolId = poolKey.toId();
+        console.log("Pool ID:", vm.toString(PoolId.unwrap(poolId)));
+        
+        // StateLibrary.getSlot0 is a library function, not external, so we can't use try/catch
+        // Instead, we'll call it directly and check the result
+        (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = 
+            StateLibrary.getSlot0(poolManager, poolId);
+            
+        console.log("[SUCCESS] Pool slot0 readable");
+        console.log("sqrtPriceX96:", sqrtPriceX96);
+        console.log("tick:", tick);
+        console.log("protocolFee:", protocolFee);
+        console.log("lpFee:", lpFee);
+        
+        if (sqrtPriceX96 == 0) {
+            revert(string(abi.encodePacked("Pool verification failed: ", poolName, " not initialized")));
+        }
+        
+        console.log("[SUCCESS] Pool initialized successfully");
+        
+        console.log("");
+    }
+
+    /// @notice Get block explorer URL for the current chain
+    function _getBlockExplorerUrl(address contractAddress) internal view returns (string memory) {
+        uint256 chainId = block.chainid;
+        
+        if (chainId == 421614) { // Arbitrum Sepolia
+            return string(abi.encodePacked("https://arbitrum-sepolia.blockscout.com/address/", vm.toString(contractAddress)));
+        } else if (chainId == 1301) { // Unichain Sepolia
+            return string(abi.encodePacked("https://sepolia.uniscan.xyz/address/", vm.toString(contractAddress)));
+        } else if (chainId == 11155111) { // Ethereum Sepolia
+            return string(abi.encodePacked("https://sepolia.etherscan.io/address/", vm.toString(contractAddress)));
+        } else if (chainId == 84532) { // Base Sepolia
+            return string(abi.encodePacked("https://sepolia.basescan.org/address/", vm.toString(contractAddress)));
+        } else {
+            return string(abi.encodePacked("Chain ", vm.toString(chainId), " - Address: ", vm.toString(contractAddress)));
+        }
     }
 } 
