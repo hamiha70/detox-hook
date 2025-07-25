@@ -31,8 +31,11 @@ contract TestSwapRouterFixedSwap is Script {
         // Get current pool configuration
         console.log("\n--- Current Pool Configuration ---");
         try swapRouter.getPoolConfiguration() returns (PoolKey memory poolKey) {
-            console.log("Currency0 (ETH):", address(poolKey.currency0));
-            console.log("Currency1 (USDC):", address(poolKey.currency1));
+            console.log("Currency0 (ETH):", Currency.unwrap(poolKey.currency0));
+            console.log(
+                "Currency1 (USDC):",
+                Currency.unwrap(poolKey.currency1)
+            );
             console.log("Fee:", poolKey.fee);
             console.log("TickSpacing:", poolKey.tickSpacing);
             console.log("Hooks (DetoxHook):", address(poolKey.hooks));
@@ -59,9 +62,10 @@ contract TestSwapRouterFixedSwap is Script {
                 zeroForOne,
                 updateData
             )
-        returns (int256 delta) {
+        returns (BalanceDelta delta) {
             console.log("\n--- Swap Successful! ---");
-            console.log("Balance Delta:", vm.toString(delta));
+            console.log("Balance Delta Amount0:", delta.amount0());
+            console.log("Balance Delta Amount1:", delta.amount1());
             console.log("Gas Used: Check transaction receipt");
         } catch Error(string memory reason) {
             console.log("\n--- Swap Failed ---");
