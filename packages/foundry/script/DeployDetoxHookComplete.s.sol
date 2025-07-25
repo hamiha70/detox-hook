@@ -298,6 +298,10 @@ contract DeployDetoxHookComplete is Script {
         );
         console.log("Expected DetoxHook address:", expectedHookAddress);
         
+        // === COMPREHENSIVE PRE-DEPLOYMENT CHECKS ===
+        console.log("=== PRE-DEPLOYMENT VERIFICATION ===");
+        _performPreDeploymentChecks(expectedHookAddress, salt);
+        
         // Check if DetoxHook is already deployed at the expected address
         if (expectedHookAddress.code.length > 0) {
             console.log("[SKIP] DetoxHook already deployed at:", expectedHookAddress);
@@ -310,7 +314,12 @@ contract DeployDetoxHookComplete is Script {
         // Deploy the hook using CREATE2 with real PriceRegistry
         try this._deployDetoxHookWithSaltExternalWithRegistry(salt, address(priceRegistry)) returns (DetoxHookV2 deployedHook) {
             hook = deployedHook;
-            console.log("Hook deployment successful");
+            console.log("Hook deployment call completed");
+            
+            // === COMPREHENSIVE POST-DEPLOYMENT CHECKS ===
+            console.log("=== POST-DEPLOYMENT VERIFICATION ===");
+            _performPostDeploymentChecks(expectedHookAddress, address(deployedHook));
+            
         } catch Error(string memory reason) {
             console.log("[ERROR] Hook deployment failed:", reason);
             revert(string(abi.encodePacked("Hook deployment failed: ", reason)));
@@ -318,6 +327,82 @@ contract DeployDetoxHookComplete is Script {
             console.log("[ERROR] Hook deployment failed: unknown error");
             revert("Hook deployment failed: unknown error");
         }
+    }
+
+    /// @notice Comprehensive pre-deployment checks
+    function _performPreDeploymentChecks(address expectedAddress, bytes32 salt) internal view {
+        console.log("Expected hook address:", expectedAddress);
+        console.log("Salt used:", vm.toString(salt));
+        
+        // Check CREATE2 deployer exists
+        console.log("CREATE2 deployer:", CREATE2_DEPLOYER);
+        console.log("CREATE2 deployer code size:", CREATE2_DEPLOYER.code.length);
+        if (CREATE2_DEPLOYER.code.length == 0) {
+            revert("CREATE2 deployer not found");
+        }
+        
+        // Check hook address compliance
+        console.log("Checking hook address compliance...");
+        uint160 addressUint = uint160(expectedAddress);
+        uint160 requiredFlags = uint160(HOOK_FLAGS);
+        uint160 addressFlags = addressUint & requiredFlags;
+        console.log("Address flags:", addressFlags);
+        console.log("Required flags:", requiredFlags);
+        console.log("Flags match:", addressFlags == requiredFlags);
+        
+        if (addressFlags != requiredFlags) {
+            console.log("[ERROR] Hook address does not match required permission flags");
+            revert("Hook address validation failed: permission flags mismatch");
+        }
+        
+        // Check address state
+        console.log("Address code length:", expectedAddress.code.length);
+        console.log("Address nonce:", vm.getNonce(expectedAddress));
+        console.log("Address ETH balance:", expectedAddress.balance);
+        
+        // Verify constructor parameters
+        console.log("Constructor parameters:");
+        console.log("- PoolManager:", address(poolManager));
+        console.log("- Owner:", deployer);
+        console.log("- Oracle:", ChainAddresses.getPythOracle(block.chainid));
+        console.log("- PriceRegistry:", address(priceRegistry));
+        
+        console.log("[SUCCESS] Pre-deployment checks passed");
+    }
+
+    /// @notice Comprehensive post-deployment checks
+    function _performPostDeploymentChecks(address expectedAddress, address deployedAddress) internal view {
+        console.log("Expected address:", expectedAddress);
+        console.log("Deployed address:", deployedAddress);
+        console.log("Addresses match:", expectedAddress == deployedAddress);
+        
+        if (expectedAddress != deployedAddress) {
+            console.log("[ERROR] Address mismatch after deployment");
+            revert("Post-deployment verification failed: address mismatch");
+        }
+        
+        // Check if code was actually deployed
+        uint256 codeSize = deployedAddress.code.length;
+        console.log("Deployed code size:", codeSize);
+        
+        if (codeSize == 0) {
+            console.log("[ERROR] No code deployed at expected address");
+            console.log("This indicates constructor revert or deployment failure");
+            revert("Post-deployment verification failed: no code at deployed address");
+        }
+        
+        // Check nonce after deployment
+        console.log("Address nonce after deployment:", vm.getNonce(deployedAddress));
+        
+        // Try to call a view function to verify contract functionality
+        try DetoxHookV2(payable(deployedAddress)).poolManager() returns (IPoolManager pm) {
+            console.log("[SUCCESS] Hook contract functional, PoolManager:", address(pm));
+        } catch {
+            console.log("[ERROR] Hook contract not functional - view function failed");
+            revert("Post-deployment verification failed: contract not functional");
+        }
+        
+        console.log("[SUCCESS] Post-deployment checks passed");
     }
     
     /// @notice External wrapper for salt mining (for try-catch)
@@ -458,8 +543,21 @@ contract DeployDetoxHookComplete is Script {
         bytes memory callData = abi.encodePacked(salt, deploymentData);
         console.log("Call data length:", callData.length);
         
-        console.log("Executing CREATE2 deployment...");
+        console.log("=== EXECUTING CREATE2 DEPLOYMENT ===");
+        console.log("About to call CREATE2 deployer...");
+        console.log("Deployer balance before:", CREATE2_DEPLOYER.balance);
+        console.log("Expected address balance before:", expectedAddress.balance);
+        
+        // Log code size before deployment
+        uint256 codeSizeBefore = expectedAddress.code.length;
+        console.log("Expected address code before:", codeSizeBefore);
+        console.log("Expected address nonce before:", vm.getNonce(expectedAddress));
+        
         (bool success, bytes memory returnData) = CREATE2_DEPLOYER.call(callData);
+        
+        console.log("CREATE2 call completed");
+        console.log("Call success:", success);
+        console.log("Return data length:", returnData.length);
         
         if (!success) {
             console.log("[ERROR] CREATE2 deployment call failed");
@@ -469,8 +567,28 @@ contract DeployDetoxHookComplete is Script {
                 if (returnData.length >= 4) {
                     console.log("Error selector:", vm.toString(bytes4(returnData)));
                 }
+                // Try to decode as string (if length > 4)
+                if (returnData.length > 4) {
+                    console.log("Raw error data:", vm.toString(returnData));
+                }
             }
             revert("CREATE2 deployment failed - call unsuccessful");
+        }
+        
+        console.log("Expected address balance after:", expectedAddress.balance);
+        
+        // Log code size after deployment
+        uint256 codeSizeAfter = expectedAddress.code.length;
+        console.log("Expected address code after:", codeSizeAfter);
+        console.log("Expected address nonce after:", vm.getNonce(expectedAddress));
+        
+        // Log the change in code size
+        if (codeSizeAfter > codeSizeBefore) {
+            console.log("[SUCCESS] Code deployed! Size increased by:", codeSizeAfter - codeSizeBefore, "bytes");
+        } else if (codeSizeAfter == codeSizeBefore && codeSizeAfter == 0) {
+            console.log("[FAIL] No code deployed - size remained 0");
+        } else {
+            console.log("[WARNING] Unexpected code size change");
         }
         
         if (returnData.length != 20) {
@@ -695,16 +813,32 @@ contract DeployDetoxHookComplete is Script {
         console.log("=== Step 4: Fund DetoxHook ===");
         
         uint256 hookFunding = deploymentParams.hookFundingAmount;
-        console.log("Funding hook with", hookFunding, "ETH (for 1000+ invocations)");
+        uint256 currentBalance = address(hook).balance;
         
-        (bool success,) = payable(address(hook)).call{value: hookFunding}("");
+        console.log("Required hook funding:", hookFunding, "ETH");
+        console.log("Current hook balance:", currentBalance, "ETH");
+        
+        // Check if hook already has sufficient funding
+        if (currentBalance >= hookFunding) {
+            console.log("[SKIP] Hook already has sufficient funding");
+            console.log("Current balance:", currentBalance);
+            console.log("Required balance:", hookFunding);
+            console.log("Estimated invocations supported: 1000+");
+            return;
+        }
+        
+        uint256 additionalFunding = hookFunding - currentBalance;
+        console.log("Additional funding needed:", additionalFunding, "ETH");
+        console.log("Funding hook with additional", additionalFunding, "ETH...");
+        
+        (bool success,) = payable(address(hook)).call{value: additionalFunding}("");
         require(success, "Failed to fund hook");
         
         console.log("Hook funded successfully");
-        console.log("Hook ETH balance:", address(hook).balance);
+        console.log("Hook ETH balance after funding:", address(hook).balance);
         console.log("Estimated invocations supported: 1000+");
         
-        emit HookFunded(address(hook), hookFunding);
+        emit HookFunded(address(hook), additionalFunding);
     }
     
     /// @notice Initialize two pools with different configurations
@@ -859,8 +993,18 @@ contract DeployDetoxHookComplete is Script {
         require(detoxHook != address(0), "DetoxHook address not found");
         
         PoolKey memory poolKey = PoolParameters.getPoolKey1(block.chainid, detoxHook, address(usdc));
+        
+        // Log state before SwapRouterFixed deployment
+        console.log("About to deploy SwapRouterFixed with args:");
+        console.log("  poolSwapTest:", poolSwapTest);
+        console.log("  poolKey.currency0:", Currency.unwrap(poolKey.currency0));
+        console.log("  poolKey.currency1:", Currency.unwrap(poolKey.currency1));
+        
         swapRouterFixedInstance = new SwapRouterFixed(poolSwapTest, poolKey);
         console.log("SwapRouterFixed deployed at:", address(swapRouterFixedInstance));
+        
+        // Check code size immediately after deployment
+        console.log("SwapRouterFixed code size:", address(swapRouterFixedInstance).code.length, "bytes");
         
         // Verify configuration
         PoolKey memory deployedPoolKey = swapRouterFixedInstance.getPoolConfiguration();
@@ -1084,9 +1228,19 @@ contract DeployDetoxHookComplete is Script {
         // For now, always deploy a new PriceRegistry
         // TODO: Implement registry lookup for true consistency
         console.log("Deploying new PriceRegistry...");
+        
+        // Log state before deployment
+        console.log("About to deploy PriceRegistry with constructor arg:", deployer);
+        
         PriceRegistry newRegistry = new PriceRegistry(deployer);
         
+        // Log state immediately after deployment
         console.log("PriceRegistry deployed with owner:", newRegistry.owner());
+        console.log("PriceRegistry address:", address(newRegistry));
+        
+        // Check code size immediately after deployment
+        console.log("PriceRegistry code size:", address(newRegistry).code.length, "bytes");
+        
         return newRegistry;
     }
 
@@ -1253,13 +1407,10 @@ contract DeployDetoxHookComplete is Script {
         console.log("Verifying:", contractName);
         console.log("Address:", contractAddress);
         
-        // Check if contract exists
-        uint256 codeSize;
-        assembly {
-            codeSize := extcodesize(contractAddress)
-        }
-        
+        // Check contract deployment
+        uint256 codeSize = contractAddress.code.length;
         console.log("Code size:", codeSize, "bytes");
+        console.log("ETH balance:", contractAddress.balance);
         
         if (codeSize == 0) {
             console.log("[FAIL] No code found at address - deployment failed!");
@@ -1319,7 +1470,7 @@ contract DeployDetoxHookComplete is Script {
     }
 
     /// @notice Verify pool initialization
-    function _verifyPoolInitialization(PoolKey memory poolKey, string memory poolName) internal {
+    function _verifyPoolInitialization(PoolKey memory poolKey, string memory poolName) internal view {
         console.log("=== POOL VERIFICATION ===");
         console.log("Verifying:", poolName);
         
