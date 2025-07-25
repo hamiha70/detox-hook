@@ -1,0 +1,519 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
+
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+
+import {DetoxHookV2} from "../src/DetoxHookV2.sol";
+import {HookMiner} from "../src/libraries/HookMinerWithSeed.sol";
+import {MockPyth} from "../src/libraries/PythMock.sol";
+
+/// @title DetoxHook Gas Analysis Tests
+/// @notice Comprehensive gas usage analysis for DetoxHook operations
+/// @dev Tests gas consumption for beforeSwap, Pyth integration, and full swap workflows
+contract DetoxHookGasAnalysisTest is Test, Deployers {
+    using PoolIdLibrary for PoolKey;
+    using CurrencyLibrary for Currency;
+
+    DetoxHookV2 hook;
+    PoolKey poolKey;
+    PoolId poolId;
+    MockPyth pythOracle;
+
+    // Gas limit constants based on real-world testing
+    uint256 constant BEFORE_SWAP_GAS_LIMIT = 250000; // DetoxHook beforeSwap only
+    uint256 constant PYTH_ORACLE_GAS_LIMIT = 50000; // Single Pyth price call
+    uint256 constant FULL_SWAP_GAS_LIMIT = 900000; // Complete swap with DetoxHook + Pyth
+    uint256 constant OPTIMIZED_SWAP_GAS_LIMIT = 600000; // Target for optimized version
+
+    // Test wallet addresses
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+
+    // Pyth price feed IDs
+    bytes32 constant ETH_USD_PRICE_ID =
+        0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
+    bytes32 constant USDC_USD_PRICE_ID =
+        0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a;
+
+    function setUp() public {
+        // Deploy core contracts
+        Deployers.deployFreshManagerAndRouters();
+
+        // Deploy Pyth mock oracle
+        pythOracle = new MockPyth();
+
+        // Setup initial oracle prices
+        pythOracle.updatePriceFeeds(
+            ETH_USD_PRICE_ID,
+            int64(2500 * 1e6), // $2500 ETH/USD
+            uint64(1e4), // $0.01 confidence
+            -6, // exponent
+            uint64(block.timestamp)
+        );
+
+        pythOracle.updatePriceFeeds(
+            USDC_USD_PRICE_ID,
+            int64(1 * 1e6), // $1 USDC/USD
+            uint64(1e3), // $0.001 confidence
+            -6, // exponent
+            uint64(block.timestamp)
+        );
+
+        // Mine hook address with required flags
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+        );
+
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(this),
+            flags,
+            type(DetoxHookV2).creationCode,
+            abi.encode(address(manager), address(pythOracle))
+        );
+
+        // Deploy DetoxHook
+        hook = new DetoxHookV2{salt: salt}(
+            address(manager),
+            address(pythOracle)
+        );
+        require(address(hook) == hookAddress, "Hook address mismatch");
+
+        // Initialize currencies
+        MockERC20 token0 = new MockERC20("Ethereum", "ETH", 18);
+        MockERC20 token1 = new MockERC20("USD Coin", "USDC", 6);
+
+        Currency currency0 = Currency.wrap(address(token0));
+        Currency currency1 = Currency.wrap(address(token1));
+
+        // Ensure proper ordering
+        if (address(token0) > address(token1)) {
+            (currency0, currency1) = (currency1, currency0);
+        }
+
+        // Create pool key
+        poolKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 3000, // 0.3%
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+
+        poolId = poolKey.toId();
+
+        // Initialize the pool
+        manager.initialize(poolKey, SQRT_PRICE_1_1);
+
+        // Setup test accounts with tokens
+        _setupTestAccounts(token0, token1);
+
+        // Add initial liquidity for gas testing
+        _addInitialLiquidity();
+    }
+
+    /// @notice Test gas usage of DetoxHook beforeSwap function in isolation
+    function test_GasUsage_DetoxHook_BeforeSwap_NoMEV() public {
+        // Setup swap parameters (small swap, no MEV expected)
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.001e18, // Small swap amount
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        });
+
+        // Measure gas for beforeSwap call
+        uint256 gasBefore = gasleft();
+
+        BeforeSwapDelta delta = hook.beforeSwap(
+            address(swapRouter),
+            poolKey,
+            swapParams,
+            ""
+        );
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        console.log("=== DetoxHook beforeSwap Gas Analysis (No MEV) ===");
+        console.log("Gas used for beforeSwap:", gasUsed);
+        console.log(
+            "BeforeSwapDelta:",
+            BeforeSwapDeltaLibrary.unpackDelta(delta)
+        );
+
+        // Should be reasonable for non-MEV case
+        assertLt(
+            gasUsed,
+            BEFORE_SWAP_GAS_LIMIT,
+            "BeforeSwap gas usage too high for non-MEV case"
+        );
+        assertTrue(gasUsed > 50000, "BeforeSwap gas usage suspiciously low");
+    }
+
+    /// @notice Test gas usage when DetoxHook detects MEV (price deviation)
+    function test_GasUsage_DetoxHook_BeforeSwap_WithMEV() public {
+        // Create artificial MEV scenario by updating oracle prices
+        pythOracle.updatePriceFeeds(
+            ETH_USD_PRICE_ID,
+            int64(2400 * 1e6), // Drop ETH price to $2400 (4% deviation)
+            uint64(1e4),
+            -6,
+            uint64(block.timestamp)
+        );
+
+        // Setup larger swap that should trigger MEV detection
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1e18, // Larger swap amount
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        });
+
+        // Measure gas for beforeSwap with MEV detection
+        uint256 gasBefore = gasleft();
+
+        BeforeSwapDelta delta = hook.beforeSwap(
+            address(swapRouter),
+            poolKey,
+            swapParams,
+            ""
+        );
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        console.log("=== DetoxHook beforeSwap Gas Analysis (With MEV) ===");
+        console.log("Gas used for beforeSwap:", gasUsed);
+        console.log(
+            "BeforeSwapDelta:",
+            BeforeSwapDeltaLibrary.unpackDelta(delta)
+        );
+
+        // MEV detection should use more gas but still be reasonable
+        assertLt(
+            gasUsed,
+            BEFORE_SWAP_GAS_LIMIT,
+            "BeforeSwap gas usage too high for MEV case"
+        );
+        assertTrue(gasUsed > 80000, "MEV detection should use significant gas");
+    }
+
+    /// @notice Test gas usage of Pyth oracle calls in isolation
+    function test_GasUsage_PythOracle_PriceCalls() public {
+        console.log("=== Pyth Oracle Gas Analysis ===");
+
+        // Test ETH/USD price call
+        uint256 gasBefore1 = gasleft();
+        pythOracle.getPriceUnsafe(ETH_USD_PRICE_ID);
+        uint256 gasUsed1 = gasBefore1 - gasleft();
+
+        // Test USDC/USD price call
+        uint256 gasBefore2 = gasleft();
+        pythOracle.getPriceUnsafe(USDC_USD_PRICE_ID);
+        uint256 gasUsed2 = gasBefore2 - gasleft();
+
+        console.log("Gas used for ETH/USD price call:", gasUsed1);
+        console.log("Gas used for USDC/USD price call:", gasUsed2);
+
+        // Each oracle call should be reasonable
+        assertLt(
+            gasUsed1,
+            PYTH_ORACLE_GAS_LIMIT,
+            "ETH/USD oracle call gas too high"
+        );
+        assertLt(
+            gasUsed2,
+            PYTH_ORACLE_GAS_LIMIT,
+            "USDC/USD oracle call gas too high"
+        );
+
+        // Test both calls together (what DetoxHook does)
+        uint256 gasBefore3 = gasleft();
+        pythOracle.getPriceUnsafe(ETH_USD_PRICE_ID);
+        pythOracle.getPriceUnsafe(USDC_USD_PRICE_ID);
+        uint256 gasUsed3 = gasBefore3 - gasleft();
+
+        console.log("Gas used for both oracle calls:", gasUsed3);
+        assertLt(
+            gasUsed3,
+            PYTH_ORACLE_GAS_LIMIT * 2,
+            "Combined oracle calls gas too high"
+        );
+    }
+
+    /// @notice Test gas usage of complete swap workflow with DetoxHook
+    function test_GasUsage_FullSwap_SmallAmount() public {
+        vm.startPrank(alice);
+
+        // Setup small swap
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.001e18, // 0.001 ETH
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        });
+
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
+            .TestSettings({takeClaims: false, settleUsingBurn: false});
+
+        // Measure complete swap gas
+        uint256 gasBefore = gasleft();
+
+        BalanceDelta delta = swapRouter.swap(
+            poolKey,
+            swapParams,
+            testSettings,
+            ""
+        );
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        console.log("=== Full Swap Gas Analysis (Small Amount) ===");
+        console.log("Swap amount: 0.001 ETH");
+        console.log("Gas used for complete swap:", gasUsed);
+        console.log("Delta amount0:", delta.amount0());
+        console.log("Delta amount1:", delta.amount1());
+
+        // Small swaps should be more gas efficient
+        assertLt(
+            gasUsed,
+            FULL_SWAP_GAS_LIMIT,
+            "Small swap gas usage exceeds limit"
+        );
+        assertTrue(gasUsed > 200000, "Swap gas usage suspiciously low");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Test gas usage of complete swap workflow with larger amount
+    function test_GasUsage_FullSwap_LargeAmount() public {
+        vm.startPrank(alice);
+
+        // Setup larger swap that might trigger MEV protection
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1e18, // 0.1 ETH
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        });
+
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
+            .TestSettings({takeClaims: false, settleUsingBurn: false});
+
+        // Measure complete swap gas
+        uint256 gasBefore = gasleft();
+
+        BalanceDelta delta = swapRouter.swap(
+            poolKey,
+            swapParams,
+            testSettings,
+            ""
+        );
+
+        uint256 gasUsed = gasBefore - gasleft();
+
+        console.log("=== Full Swap Gas Analysis (Large Amount) ===");
+        console.log("Swap amount: 0.1 ETH");
+        console.log("Gas used for complete swap:", gasUsed);
+        console.log("Delta amount0:", delta.amount0());
+        console.log("Delta amount1:", delta.amount1());
+
+        // Large swaps with MEV protection expected to use more gas
+        assertLt(
+            gasUsed,
+            FULL_SWAP_GAS_LIMIT,
+            "Large swap gas usage exceeds limit"
+        );
+        assertTrue(gasUsed > 300000, "Large swap should use significant gas");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Benchmark different swap sizes for gas scaling analysis
+    function test_GasUsage_SwapSizeBenchmark() public {
+        vm.startPrank(alice);
+
+        uint256[] memory swapAmounts = new uint256[](5);
+        swapAmounts[0] = 0.0001e18; // 0.0001 ETH
+        swapAmounts[1] = 0.001e18; // 0.001 ETH
+        swapAmounts[2] = 0.01e18; // 0.01 ETH
+        swapAmounts[3] = 0.1e18; // 0.1 ETH
+        swapAmounts[4] = 1e18; // 1 ETH
+
+        console.log("=== Swap Size Gas Benchmark ===");
+
+        for (uint i = 0; i < swapAmounts.length; i++) {
+            SwapParams memory swapParams = SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(swapAmounts[i]),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            });
+
+            PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
+                .TestSettings({takeClaims: false, settleUsingBurn: false});
+
+            uint256 gasBefore = gasleft();
+
+            try swapRouter.swap(poolKey, swapParams, testSettings, "") returns (
+                BalanceDelta delta
+            ) {
+                uint256 gasUsed = gasBefore - gasleft();
+
+                console.log("Swap amount (ETH):", swapAmounts[i] / 1e18);
+                console.log("Gas used:", gasUsed);
+                console.log("Delta amount0:", delta.amount0());
+                console.log("Delta amount1:", delta.amount1());
+                console.log("---");
+
+                // Gas should scale reasonably with swap size
+                assertLt(
+                    gasUsed,
+                    FULL_SWAP_GAS_LIMIT,
+                    "Swap gas exceeds maximum limit"
+                );
+            } catch Error(string memory reason) {
+                console.log(
+                    "Swap failed for amount:",
+                    swapAmounts[i] / 1e18,
+                    "ETH"
+                );
+                console.log("Reason:", reason);
+                console.log("---");
+            }
+        }
+
+        vm.stopPrank();
+    }
+
+    /// @notice Test gas usage comparison with and without DetoxHook
+    function test_GasUsage_Comparison_WithoutDetoxHook() public {
+        // Deploy a pool without DetoxHook for comparison
+        PoolKey memory vanillaPoolKey = PoolKey({
+            currency0: poolKey.currency0,
+            currency1: poolKey.currency1,
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0)) // No hook
+        });
+
+        manager.initialize(vanillaPoolKey, SQRT_PRICE_1_1);
+
+        // Add liquidity to vanilla pool
+        vm.startPrank(address(swapRouter));
+        modifyLiquidityRouter.modifyLiquidity(
+            vanillaPoolKey,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -600,
+                tickUpper: 600,
+                liquidityDelta: 1000e18,
+                salt: bytes32(0)
+            }),
+            ""
+        );
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.01e18,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        });
+
+        PoolSwapTest.TestSettings memory testSettings = PoolSwapTest
+            .TestSettings({takeClaims: false, settleUsingBurn: false});
+
+        // Test vanilla pool (without DetoxHook)
+        uint256 gasBefore1 = gasleft();
+        swapRouter.swap(vanillaPoolKey, swapParams, testSettings, "");
+        uint256 gasUsedVanilla = gasBefore1 - gasleft();
+
+        // Test DetoxHook pool
+        uint256 gasBefore2 = gasleft();
+        swapRouter.swap(poolKey, swapParams, testSettings, "");
+        uint256 gasUsedDetox = gasBefore2 - gasleft();
+
+        console.log("=== Gas Usage Comparison ===");
+        console.log("Vanilla pool gas:", gasUsedVanilla);
+        console.log("DetoxHook pool gas:", gasUsedDetox);
+        console.log("DetoxHook overhead:", gasUsedDetox - gasUsedVanilla);
+        console.log(
+            "Overhead percentage:",
+            ((gasUsedDetox - gasUsedVanilla) * 100) / gasUsedVanilla
+        );
+
+        // DetoxHook should add overhead but not be excessive
+        assertTrue(
+            gasUsedDetox > gasUsedVanilla,
+            "DetoxHook should add gas overhead"
+        );
+        assertLt(
+            gasUsedDetox - gasUsedVanilla,
+            300000,
+            "DetoxHook overhead too high"
+        );
+
+        vm.stopPrank();
+    }
+
+    /// @notice Test gas usage optimization targets for production
+    function test_GasUsage_OptimizationTargets() public {
+        console.log("=== Gas Optimization Targets ===");
+        console.log("Current limits and targets:");
+        console.log("BeforeSwap limit:", BEFORE_SWAP_GAS_LIMIT);
+        console.log("Pyth oracle limit:", PYTH_ORACLE_GAS_LIMIT);
+        console.log("Full swap limit:", FULL_SWAP_GAS_LIMIT);
+        console.log("Optimization target:", OPTIMIZED_SWAP_GAS_LIMIT);
+
+        // These are informational - track progress toward optimization goals
+        assertTrue(true, "Gas optimization targets defined for monitoring");
+    }
+
+    /// @notice Setup test accounts with sufficient token balances
+    function _setupTestAccounts(MockERC20 token0, MockERC20 token1) private {
+        // Mint tokens to test accounts
+        token0.mint(alice, 1000e18);
+        token1.mint(alice, 1000000e6); // 1M USDC (6 decimals)
+
+        token0.mint(bob, 1000e18);
+        token1.mint(bob, 1000000e6);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        token0.approve(address(swapRouter), type(uint256).max);
+        token1.approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        token0.approve(address(swapRouter), type(uint256).max);
+        token1.approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    /// @notice Add initial liquidity for testing
+    function _addInitialLiquidity() private {
+        vm.startPrank(address(swapRouter));
+
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -600,
+                tickUpper: 600,
+                liquidityDelta: 1000e18,
+                salt: bytes32(0)
+            }),
+            ""
+        );
+
+        vm.stopPrank();
+    }
+}
