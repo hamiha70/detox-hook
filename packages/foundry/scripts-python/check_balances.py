@@ -277,14 +277,21 @@ class BalanceChecker:
         # Known wallet environment variables
         wallet_env_vars = [
             'DEPLOYMENT_WALLET',
+            'DEPLOYMENT_WALLET_31337',
             'SWAPPER_WALLET', 
-            'LIQUIDITY_PROVIDER_WALLET'
+            'LIQUIDITY_PROVIDER_WALLET',
+            'POOL_CREATION_WALLET'
         ]
         
         for env_var in wallet_env_vars:
             wallet = os.getenv(env_var)
-            if wallet and Web3.is_address(wallet):
-                wallets.append(wallet)
+            if wallet:
+                # Clean the wallet address (remove comments and whitespace)
+                cleaned_wallet = wallet.split('#')[0].strip()
+                if cleaned_wallet and Web3.is_address(cleaned_wallet):
+                    wallets.append(cleaned_wallet)
+                    if self.verbose:
+                        print(f"📋 Found wallet from {env_var}: {cleaned_wallet}")
         
         return wallets
     
