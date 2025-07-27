@@ -216,3 +216,114 @@ dev-test: test-fast
 ci-test: test-all
 	@echo "✅ Full CI test suite completed!"
 
+# ============ DEPLOYMENT VERIFICATION ============
+
+# Verify current Arbitrum Sepolia deployment
+verify-deployment-arbitrum-sepolia:
+	@echo "🔍 Verifying DetoxHook deployment on Arbitrum Sepolia..."
+	@chmod +x script/verify-deployment.sh
+	@./script/verify-deployment.sh 421614 $(RPC_URL_421614)
+
+# Verify deployment on any chain (requires CHAIN_ID and RPC_URL)
+verify-deployment:
+	@echo "🔍 Verifying DetoxHook deployment on chain $(CHAIN_ID)..."
+	@if [ -z "$(CHAIN_ID)" ] || [ -z "$(RPC_URL)" ]; then \
+		echo "❌ Error: CHAIN_ID and RPC_URL must be set"; \
+		echo "   Usage: make verify-deployment CHAIN_ID=421614 RPC_URL=https://..."; \
+		exit 1; \
+	fi
+	@chmod +x script/verify-deployment.sh
+	@./script/verify-deployment.sh $(CHAIN_ID) $(RPC_URL)
+
+# Verify using Solidity script (more comprehensive)
+verify-deployment-solidity:
+	@echo "🔍 Running comprehensive Solidity verification..."
+	@forge script script/VerifyDeployment.s.sol:VerifyDeployment \
+		--rpc-url $(RPC_URL) \
+		-vvv
+
+# Check broadcast files for deployment history
+check-broadcast:
+	@echo "📁 Checking broadcast files..."
+	@find broadcast -name "run-latest.json" -exec echo "Found: {}" \; -exec jq -r '.transactions[] | "Contract: \(.contractName // "Unknown") Address: \(.contractAddress // .to)"' {} \; 2>/dev/null || echo "No broadcast files found or jq not installed"
+
+# Quick deployment status check
+deployment-status:
+	@echo "📊 DetoxHook Deployment Status"
+	@echo "=============================="
+	@echo "🏗️  Latest successful deployment addresses:"
+	@echo "   DetoxHook: 0xB7d53527Fd072ea45e15FC09101Eb379D3778088"
+	@echo "   PriceRegistry: 0x927a871865B739ae9844EA83fC4163a487DB17Fe"
+	@echo "   SwapRouterFixed: 0xAaFd63797e2Eaedc2b59386B21ed30e2501A78F1"
+	@echo "   MockUSDC: 0x6c00492dF8fcaE1309C7A60CcdeB2E4ECe587Aba"
+	@echo ""
+	@echo "🔗 Block Explorer Links (Arbitrum Sepolia):"
+	@echo "   https://arbitrum-sepolia.blockscout.com/address/0xB7d53527Fd072ea45e15FC09101Eb379D3778088"
+	@echo ""
+	@echo "📋 To verify deployment, run:"
+	@echo "   make verify-deployment-arbitrum-sepolia"
+
+# ============================================================================
+# 🔍 CONTRACT VERIFICATION
+# ============================================================================
+
+# Verify all contracts on Arbitrum Sepolia
+verify-contracts-arbitrum-sepolia:
+	@echo "🔍 Verifying all contracts on Arbitrum Sepolia..."
+	@source .env && make verify-detoxhook-arbitrum-sepolia
+	@source .env && make verify-priceregistry-arbitrum-sepolia  
+	@source .env && make verify-swaprouter-arbitrum-sepolia
+
+# Verify DetoxHook on Arbitrum Sepolia
+verify-detoxhook-arbitrum-sepolia:
+	@echo "🔍 Verifying DetoxHook on Arbitrum Sepolia..."
+	@source .env && forge verify-contract $(DETOXHOOK_ADDRESS_421614) src/DetoxHookV2.sol:DetoxHookV2 \
+		--chain-id 421614 \
+		--constructor-args $$(cast abi-encode "constructor(address,address,address,address)" \
+			$(POOL_MANAGER_421614) $(DEPLOYMENT_WALLET_421614) $(PYTH_ORACLE_421614) $(PRICEREGISTRY_ADDRESS_421614)) \
+		--verifier blockscout \
+		--verifier-url $(VERIFIER_URL_421614)
+
+# Verify PriceRegistry on Arbitrum Sepolia  
+verify-priceregistry-arbitrum-sepolia:
+	@echo "🔍 Verifying PriceRegistry on Arbitrum Sepolia..."
+	@source .env && forge verify-contract $(PRICEREGISTRY_ADDRESS_421614) src/PriceRegistry.sol:PriceRegistry \
+		--chain-id 421614 \
+		--constructor-args $$(cast abi-encode "constructor(address)" $(DEPLOYMENT_WALLET_421614)) \
+		--verifier blockscout \
+		--verifier-url $(VERIFIER_URL_421614)
+
+# Verify SwapRouterFixed on Arbitrum Sepolia
+verify-swaprouter-arbitrum-sepolia:
+	@echo "🔍 Verifying SwapRouterFixed on Arbitrum Sepolia..."
+	@source .env && forge verify-contract $(SWAPROUTER_ADDRESS_421614) src/SwapRouterFixed.sol:SwapRouterFixed \
+		--chain-id 421614 \
+		--constructor-args $$(cast abi-encode "constructor(address,(address,address,uint24,int24,address))" \
+			$(POOL_SWAP_TEST_421614) "($(CURRENCY0_421614),$(MOCKUSDC_ADDRESS_421614),500,10,$(DETOXHOOK_ADDRESS_421614))") \
+		--verifier blockscout \
+		--verifier-url $(VERIFIER_URL_421614)
+
+# Generic verification for any chain (pass CHAIN_ID as parameter)
+verify-contracts:
+	@echo "🔍 Verifying contracts on chain $(CHAIN_ID)..."
+	@if [ "$(CHAIN_ID)" = "421614" ]; then \
+		make verify-contracts-arbitrum-sepolia; \
+	elif [ "$(CHAIN_ID)" = "11155111" ]; then \
+		make verify-contracts-ethereum-sepolia; \
+	elif [ "$(CHAIN_ID)" = "1301" ]; then \
+		make verify-contracts-unichain-sepolia; \
+	else \
+		echo "❌ Chain ID $(CHAIN_ID) not supported for verification"; \
+		exit 1; \
+	fi
+
+# Verify all contracts on Ethereum Sepolia (template)
+verify-contracts-ethereum-sepolia:
+	@echo "🔍 Verifying all contracts on Ethereum Sepolia..."
+	@echo "⚠️  Not implemented yet - add contract addresses to .env first"
+
+# Verify all contracts on Unichain Sepolia (template)
+verify-contracts-unichain-sepolia:
+	@echo "🔍 Verifying all contracts on Unichain Sepolia..."
+	@echo "⚠️  Not implemented yet - add contract addresses to .env first"
+
