@@ -8,11 +8,13 @@ It integrates with the DetoxHook environment configuration and provides detailed
 balance information for development and monitoring.
 
 Usage:
+    python check_balances.py                        # Check all wallets (default)
     python check_balances.py <address1> [address2] [address3] ...
     python check_balances.py --env-wallets
     python check_balances.py --all
     
 Examples:
+    python check_balances.py                        # Check all wallets (default)
     python check_balances.py 0x00cA5716A51f8E48055d03fCadE8CFE0A463Bab6
     python check_balances.py --env-wallets  # Check all wallets from .env
     python check_balances.py --all --verbose  # Check all with details
@@ -355,6 +357,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  %(prog)s                                  # Check all wallets (default behavior)
   %(prog)s 0x00cA5716A51f8E48055d03fCadE8CFE0A463Bab6
   %(prog)s --env-wallets                    # Check wallets from .env
   %(prog)s --all --verbose                  # Check all with details
@@ -404,6 +407,12 @@ Examples:
     )
     
     args = parser.parse_args()
+    
+    # If no arguments provided, default to --all behavior
+    if not args.addresses and not args.env_wallets and not args.all:
+        args.all = True
+        if args.verbose:
+            print("💡 No arguments provided, defaulting to --all behavior")
     
     # Collect addresses to check
     addresses_to_check = []
