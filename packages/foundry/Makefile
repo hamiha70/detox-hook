@@ -327,3 +327,59 @@ verify-contracts-unichain-sepolia:
 	@echo "🔍 Verifying all contracts on Unichain Sepolia..."
 	@echo "⚠️  Not implemented yet - add contract addresses to .env first"
 
+# ============================================================================
+# 🪙 MOCKUSDC MINTING
+# ============================================================================
+
+# Mint MockUSDC to a single address on Arbitrum Sepolia
+mint-mock-usdc-arbitrum-sepolia:
+	@echo "🪙 Minting MockUSDC to address on Arbitrum Sepolia..."
+	@if [ -z "$(PRIVATE_KEY)" ]; then \
+		echo "❌ Error: PRIVATE_KEY environment variable is not set"; \
+		echo "   Please set your deployment private key with: export PRIVATE_KEY=0x..."; \
+		exit 1; \
+	fi
+	@if [ -z "$(RECIPIENT_ADDRESS)" ]; then \
+		echo "❌ Error: RECIPIENT_ADDRESS environment variable is not set"; \
+		echo "   Usage: RECIPIENT_ADDRESS=0x... MINT_AMOUNT=100000000000 make mint-mock-usdc-arbitrum-sepolia"; \
+		exit 1; \
+	fi
+	@if [ -z "$(MINT_AMOUNT)" ]; then \
+		echo "❌ Error: MINT_AMOUNT environment variable is not set"; \
+		echo "   Usage: RECIPIENT_ADDRESS=0x... MINT_AMOUNT=100000000000 make mint-mock-usdc-arbitrum-sepolia"; \
+		exit 1; \
+	fi
+	@echo "📝 Minting $(MINT_AMOUNT) USDC to $(RECIPIENT_ADDRESS)"
+	forge script script/MintMockUSDC.s.sol:MintMockUSDC \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		--broadcast \
+		-vvvv
+
+# Mint to all coworker addresses (convenience target)
+mint-mock-usdc-coworkers-arbitrum-sepolia:
+	@echo "🪙 Minting MockUSDC to all coworker addresses..."
+	@if [ -z "$(PRIVATE_KEY)" ]; then \
+		echo "❌ Error: PRIVATE_KEY environment variable is not set"; \
+		exit 1; \
+	fi
+	@echo "📝 Minting to DEPLOYMENT_WALLET..."
+	@RECIPIENT_ADDRESS=0x00cA5716A51f8E48055d03fCadE8CFE0A463Bab6 MINT_AMOUNT=1000000000000 make mint-mock-usdc-arbitrum-sepolia
+	@echo "📝 Minting to SWAPPER_WALLET..."
+	@RECIPIENT_ADDRESS=0x6c299c77760Ae4B7C11Ac4632CB18d434F4f960C MINT_AMOUNT=100000000000 make mint-mock-usdc-arbitrum-sepolia
+	@echo "📝 Minting to LIQUIDITY_PROVIDER_WALLET..."
+	@RECIPIENT_ADDRESS=0x56c55420a15dfa4EBd637b598Cdaa84Ba6357FB3 MINT_AMOUNT=100000000000 make mint-mock-usdc-arbitrum-sepolia
+	@echo "✅ All coworker addresses minted successfully!"
+
+# Test MockUSDC minting configuration (no broadcast)
+test-mock-usdc-minting:
+	@echo "🧪 Testing MockUSDC minting configuration..."
+	@echo "📋 This will validate minting parameters without broadcasting"
+	@if [ -z "$(RECIPIENT_ADDRESS)" ] || [ -z "$(MINT_AMOUNT)" ]; then \
+		echo "❌ Error: RECIPIENT_ADDRESS and MINT_AMOUNT must be set"; \
+		echo "   Usage: RECIPIENT_ADDRESS=0x... MINT_AMOUNT=100000000000 make test-mock-usdc-minting"; \
+		exit 1; \
+	fi
+	forge script script/MintMockUSDC.s.sol:MintMockUSDC \
+		--sig "testMinting()" \
+		--rpc-url https://sepolia-rollup.arbitrum.io/rpc \
+		-vvvv
