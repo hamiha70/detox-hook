@@ -33,6 +33,10 @@ contract GetPoolState is Script {
         // Real DetoxHook Pool 2: ETH/USDC 0.05% fee
         PoolKey memory pool2 = _getDetoxPool2Key();
         _displayPoolState("DetoxHook Pool 2 (ETH/USDC 0.05%)", pool2);
+
+        // Real DetoxHook Pool 3: ETH/MockUSDC 0.05% fee
+        PoolKey memory pool3 = _getDetoxPool3Key();
+        _displayPoolState("DetoxHook Pool 3 (ETH/MockUSDC 0.05%)", pool3);
     }
 
     function _displayPoolState(
@@ -91,6 +95,19 @@ contract GetPoolState is Script {
                 fee: 500, // 0.05%
                 tickSpacing: 10,
                 hooks: IHooks(0x444F320aA27e73e1E293c14B22EfBDCbce0e0088) // DetoxHook
+            });
+    }
+
+    function _getDetoxPool3Key() internal pure returns (PoolKey memory) {
+        return
+            PoolKey({
+                currency0: Currency.wrap(address(0)), // ETH
+                currency1: Currency.wrap(
+                    0x9D5A68fDFEcc14683324640D5e835936422a47b1
+                ), // MockUSDC
+                fee: 500, // 0.05%
+                tickSpacing: 60,
+                hooks: IHooks(0x25b9b40a53c9FAB2d7b2190eb406A22e2d738088) // DetoxHook
             });
     }
 }
