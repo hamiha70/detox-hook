@@ -101,12 +101,12 @@ contract GetPoolState is Script {
     function _getDetoxPool3Key() internal pure returns (PoolKey memory) {
         return
             PoolKey({
-                currency0: Currency.wrap(address(0)), // ETH
+                currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(
                     0x9D5A68fDFEcc14683324640D5e835936422a47b1
-                ), // MockUSDC
-                fee: 500, // 0.05%
-                tickSpacing: 60,
+                ),
+                fee: 300,
+                tickSpacing: 40,
                 hooks: IHooks(0x25b9b40a53c9FAB2d7b2190eb406A22e2d738088) // DetoxHook
             });
     }
