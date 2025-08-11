@@ -27,12 +27,12 @@ contract GetPoolState is Script {
         console.log("PoolManager:", address(POOL_MANAGER));
 
         // Real DetoxHook Pool 1: ETH/USDC 0.3% fee
-        PoolKey memory pool1 = _getDetoxPool1Key();
-        _displayPoolState("DetoxHook Pool 1 (ETH/USDC 0.3%)", pool1);
+        //PoolKey memory pool1 = _getDetoxPool1Key();
+        //_displayPoolState("DetoxHook Pool 1 (ETH/USDC 0.3%)", pool1);
 
         // Real DetoxHook Pool 2: ETH/USDC 0.05% fee
-        PoolKey memory pool2 = _getDetoxPool2Key();
-        _displayPoolState("DetoxHook Pool 2 (ETH/USDC 0.05%)", pool2);
+        //PoolKey memory pool2 = _getDetoxPool2Key();
+        // _displayPoolState("DetoxHook Pool 2 (ETH/USDC 0.05%)", pool2);
 
         // Real DetoxHook Pool 3: ETH/MockUSDC 0.05% fee
         PoolKey memory pool3 = _getDetoxPool3Key();
@@ -59,7 +59,8 @@ contract GetPoolState is Script {
 
         console.log("[SUCCESS] Pool State Retrieved:");
         console.log("  sqrtPriceX96:", sqrtPriceX96);
-        console.log("  Current Tick:", uint256(int256(tick)));
+        console.log("  Current Tick:", int24(tick)); // Fixed: Use int256 instead of uint256
+        console.log("  Tick Status:", _getTickStatus(tick));
         console.log("  Protocol Fee:", protocolFee);
         console.log("  LP Fee:", lpFee);
         console.log("  Liquidity:", liquidity);
@@ -69,6 +70,18 @@ contract GetPoolState is Script {
             uint256 humanPrice = HookLibrary.sqrtPriceToPrice(sqrtPriceX96);
             console.log("  Human Price (USDC/ETH):", humanPrice);
             console.log("  ETH/USDC Rate:", 1e36 / humanPrice);
+        }
+    }
+
+    function _getTickStatus(int24 tick) internal pure returns (string memory) {
+        if (tick == type(int24).max) {
+            return "INVALID_TICK";
+        } else if (tick == type(int24).min) {
+            return "INVALID_TICK";
+        } else if (tick < 0) {
+            return "NEGATIVE_TICK";
+        } else {
+            return "POSITIVE_TICK";
         }
     }
 

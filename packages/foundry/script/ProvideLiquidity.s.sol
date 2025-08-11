@@ -26,6 +26,12 @@ contract ProvideLiquidity is Script {
     address constant DETOX_HOOK_ADDRESS =
         0x25b9b40a53c9FAB2d7b2190eb406A22e2d738088;
 
+    // Here for  reference not reqired in script
+    address constant POOL_MANAGER_ADDRESS =
+        0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317;
+    address constant POOL_MODIFY_LIQUIDITY_TEST_ADDRESS =
+        0x9A8ca723F5dcCb7926D00B71deC55c2fEa1F50f7;
+
     // Chain ID for Arbitrum Sepolia
     uint256 constant ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
 
@@ -39,10 +45,13 @@ contract ProvideLiquidity is Script {
             hooks: IHooks(DETOX_HOOK_ADDRESS)
         });
 
+    /// @notice The PoolManager contract
+    IPoolManager public immutable poolManager;
+
     // Liquidity parameters
     int24 constant TICK_LOWER = -85160;
     int24 constant TICK_UPPER = -77160;
-    int256 constant LIQUIDITY_DELTA = 10;
+    int256 constant LIQUIDITY_DELTA = 800;
     bytes32 constant SALT =
         0x0000000000000000000000000000000000000000000000000000000000000001;
 
@@ -162,16 +171,25 @@ contract ProvideLiquidity is Script {
             console.log("[SUCCESS] MockUSDC approved for LiquidityRouter");
         }
 
-        // Approve pool tokens for PoolModifyLiquidityTest
+        // Approve MockUSDC for PoolModifyLiquidityTest
         console.log("Approving pool tokens for PoolModifyLiquidityTest...");
-        liquidityRouter.approvePoolTokens(poolKey);
-        console.log("[SUCCESS] Pool tokens approved");
+        IERC20(MOCKUSDC_ADDRESS).approve(
+            POOL_MODIFY_LIQUIDITY_TEST_ADDRESS,
+            type(uint256).max
+        );
+        console.log("[SUCCESS] MockUSDC approved for PoolModifyLiquidityTest");
+
+        // Transfer MockUSDC to LiquidityRouter for liquidity provision
+        console.log("Transferring MockUSDC to LiquidityRouter...");
+        IERC20(MOCKUSDC_ADDRESS).transfer(
+            LIQUIDITY_ROUTER_ADDRESS,
+            1000000 // Transfer 1,000,000 MockUSDC (1 USDC equivalent)
+        );
+        console.log("[SUCCESS] MockUSDC transferred to LiquidityRouter");
 
         console.log("=== Adding Liquidity ===");
-        console.log("Calling addLiquidity...");
-
         try
-            liquidityRouter.addLiquidity{value: 0.001 ether}(
+            liquidityRouter.addLiquidity{value: 0.02 ether}(
                 poolKey,
                 TICK_LOWER,
                 TICK_UPPER,

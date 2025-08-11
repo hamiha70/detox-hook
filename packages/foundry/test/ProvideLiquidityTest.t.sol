@@ -41,8 +41,8 @@ contract ProvideLiquidityTest is Test {
     PoolKey poolKey;
 
     // Liquidity parameters
-    int24 constant TICK_LOWER = -90000;
-    int24 constant TICK_UPPER = -70000;
+    int24 constant TICK_LOWER = -85160;
+    int24 constant TICK_UPPER = -77160;
     int256 constant LIQUIDITY_DELTA = 100;
     bytes32 constant SALT =
         0x0000000000000000000000000000000000000000000000000000000000000001;
