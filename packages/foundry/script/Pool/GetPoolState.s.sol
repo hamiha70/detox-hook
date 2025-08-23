@@ -59,17 +59,88 @@ contract GetPoolState is Script {
 
         console.log("[SUCCESS] Pool State Retrieved:");
         console.log("  sqrtPriceX96:", sqrtPriceX96);
-        console.log("  Current Tick:", int24(tick)); // Fixed: Use int256 instead of uint256
+        console.log("  Current Tick:", int24(tick));
         console.log("  Tick Status:", _getTickStatus(tick));
         console.log("  Protocol Fee:", protocolFee);
         console.log("  LP Fee:", lpFee);
         console.log("  Liquidity:", liquidity);
 
-        // Calculate human-readable price
+        // Check for zero liquidity condition with helpful context
+        if (liquidity == 0) {
+            console.log("  [WARNING] Pool has ZERO liquidity!");
+            console.log(
+                "  [INFO] No swaps possible - pool needs liquidity first"
+            );
+            console.log(
+                "  [INFO] Price data below shows theoretical price if liquidity existed"
+            );
+        } else {
+            console.log(
+                "  [INFO] Pool has active liquidity - swaps should work"
+            );
+        }
+
+        // Calculate human-readable price with enhanced safety checks
         if (sqrtPriceX96 > 0) {
-            uint256 humanPrice = HookLibrary.sqrtPriceToPrice(sqrtPriceX96);
-            console.log("  Human Price (USDC/ETH):", humanPrice);
-            console.log("  ETH/USDC Rate:", 1e36 / humanPrice);
+            // Wrap in try-catch for maximum safety
+            try this._calculateAndDisplayPrice(sqrtPriceX96) {
+                // Success - price displayed in external function
+            } catch Error(string memory reason) {
+                console.log("  [ERROR] Price calculation failed:", reason);
+                console.log(
+                    "  [INFO] Raw sqrtPriceX96 value is available above"
+                );
+            } catch (bytes memory) {
+                console.log(
+                    "  [ERROR] Price calculation failed with low-level error"
+                );
+                console.log(
+                    "  [INFO] Raw sqrtPriceX96 value is available above"
+                );
+            }
+        } else {
+            console.log(
+                "  [ERROR] Invalid sqrtPriceX96 (zero) - pool not initialized"
+            );
+        }
+    }
+
+    /// @notice External function to safely calculate and display price information
+    /// @dev Using external function allows try-catch for error handling
+    function _calculateAndDisplayPrice(uint160 sqrtPriceX96) external pure {
+        uint256 humanPrice = HookLibrary.sqrtPriceToPrice(sqrtPriceX96);
+        console.log("  Human Price (USDC/ETH):", humanPrice);
+
+        // Enhanced safety checks for rate calculation
+        if (humanPrice == 0) {
+            console.log("  ETH/USDC Rate: [ZERO_PRICE - Invalid state]");
+        } else if (humanPrice > 1e35) {
+            console.log(
+                "  ETH/USDC Rate: [EXTREME_HIGH_PRICE - Cannot calculate safely]"
+            );
+            console.log(
+                "  Price indicates MockUSDC is extremely expensive vs ETH"
+            );
+        } else if (humanPrice < 1e6) {
+            console.log(
+                "  ETH/USDC Rate: [EXTREME_LOW_PRICE - Cannot calculate safely]"
+            );
+            console.log("  Price indicates MockUSDC is extremely cheap vs ETH");
+        } else {
+            // Safe to calculate rate
+            uint256 ethUsdcRate = 1e36 / humanPrice;
+            console.log("  ETH/USDC Rate:", ethUsdcRate);
+
+            // Add helpful context for understanding the price
+            if (ethUsdcRate > 5000e18) {
+                console.log(
+                    "  [INFO] ETH is very expensive relative to MockUSDC"
+                );
+            } else if (ethUsdcRate < 1000e18) {
+                console.log("  [INFO] ETH is very cheap relative to MockUSDC");
+            } else {
+                console.log("  [INFO] ETH/MockUSDC price in reasonable range");
+            }
         }
     }
 
