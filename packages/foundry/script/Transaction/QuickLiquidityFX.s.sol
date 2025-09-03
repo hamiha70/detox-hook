@@ -157,40 +157,33 @@ contract QuickLiquidityFX is Script {
 
         PoolId poolId = poolKey.toId();
 
-        try this.getPoolSlot0(poolId) returns (
+        // Get pool state using StateLibrary
+        (
             uint160 sqrtPriceX96,
             int24 tick,
             uint24 protocolFee,
             uint24 lpFee
-        ) {
-            console.log("Pool state fetched successfully:");
-            console.log("  Current price (sqrtPriceX96):", sqrtPriceX96);
-            console.log("  Current tick:", vm.toString(tick));
-            console.log("  Protocol fee:", protocolFee);
-            console.log("  LP fee:", lpFee);
+        ) = StateLibrary.getSlot0(poolManager, poolId);
 
-            // Calculate and display current price in human-readable format
-            _displayCurrentPrice(sqrtPriceX96);
+        console.log("Pool state fetched successfully:");
+        console.log("  Current price (sqrtPriceX96):", sqrtPriceX96);
+        console.log("  Current tick:", vm.toString(tick));
+        console.log("  Protocol fee:", protocolFee);
+        console.log("  LP fee:", lpFee);
 
-            // Verify tick alignment with pool tick spacing
-            bool tickAligned = (tick % int24(poolKey.tickSpacing)) == 0;
-            console.log(
-                "  Tick alignment:",
-                tickAligned ? "ALIGNED" : "NOT ALIGNED"
-            );
+        // Calculate and display current price in human-readable format
+        _displayCurrentPrice(sqrtPriceX96);
 
-            // Get liquidity at current tick
-            try this.getPoolLiquidity(poolId) returns (uint128 liquidity) {
-                console.log("  Liquidity at current tick:", liquidity);
-            } catch {
-                console.log("  Liquidity at current tick: [QUERY FAILED]");
-            }
-        } catch {
-            console.log(
-                "[WARNING] Pool state query failed - pool may not be initialized"
-            );
-            console.log("This is expected if the pool hasn't been created yet");
-        }
+        // Verify tick alignment with pool tick spacing
+        bool tickAligned = (tick % int24(poolKey.tickSpacing)) == 0;
+        console.log(
+            "  Tick alignment:",
+            tickAligned ? "ALIGNED" : "NOT ALIGNED"
+        );
+
+        // Get liquidity at current tick
+        uint128 liquidity = StateLibrary.getLiquidity(poolManager, poolId);
+        console.log("  Liquidity at current tick:", liquidity);
     }
 
     /// @notice Display current price in human-readable format
@@ -313,35 +306,5 @@ contract QuickLiquidityFX is Script {
             )
         );
         console.log("  [PASS]", contractName, "at:", contractAddress);
-    }
-
-    /// @notice Helper function to get pool slot0 data using StateLibrary
-    /// @param poolId The pool ID to query
-    /// @return sqrtPriceX96 The current sqrt price
-    /// @return tick The current tick
-    /// @return protocolFee The protocol fee
-    /// @return lpFee The LP fee
-    function getPoolSlot0(
-        PoolId poolId
-    )
-        external
-        view
-        returns (
-            uint160 sqrtPriceX96,
-            int24 tick,
-            uint24 protocolFee,
-            uint24 lpFee
-        )
-    {
-        return StateLibrary.getSlot0(poolManager, poolId);
-    }
-
-    /// @notice Helper function to get pool liquidity using StateLibrary
-    /// @param poolId The pool ID to query
-    /// @return liquidity The current liquidity
-    function getPoolLiquidity(
-        PoolId poolId
-    ) external view returns (uint128 liquidity) {
-        return StateLibrary.getLiquidity(poolManager, poolId);
     }
 }
