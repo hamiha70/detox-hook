@@ -3,8 +3,8 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import { PriceRegistry } from "../src/PriceRegistry.sol";
-import { ChainAddresses } from "./ChainAddresses.sol";
+import { PriceRegistry } from "../../src/PriceRegistry.sol";
+import { ChainAddresses } from "../Utility/ChainAddresses.sol";
 
 /**
  * @title DeployPriceRegistry

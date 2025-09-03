@@ -4,12 +4,12 @@ pragma solidity ^0.8.20;
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import { DetoxHookV2 } from "../src/DetoxHookV2.sol";
-import { PriceRegistry } from "../src/PriceRegistry.sol";
+import { DetoxHookV2 } from "../../src/DetoxHookV2.sol";
+import { PriceRegistry } from "../../src/PriceRegistry.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { HookMiner } from "@v4-periphery/src/utils/HookMiner.sol";
-import { ChainAddresses } from "./ChainAddresses.sol";
-import { Create2Deployer } from "../src/test-helpers/Create2Deployer.sol";
+import { ChainAddresses } from "../Utility/ChainAddresses.sol";
+import { Create2Deployer } from "../../src/test-helpers/Create2Deployer.sol";
 
 /**
  * @title DeployDetoxHookV2

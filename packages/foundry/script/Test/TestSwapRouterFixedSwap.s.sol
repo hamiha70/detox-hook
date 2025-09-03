@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import {SwapRouterFixed} from "../src/SwapRouterFixed.sol";
+import {SwapRouterFixed} from "../../src/SwapRouterFixed.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";

@@ -14,7 +14,7 @@ import { FullMath } from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import { IERC20Minimal } from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import { PoolModifyLiquidityTest } from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import { ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import { ChainAddresses } from "./ChainAddresses.sol";
+import { ChainAddresses } from "../Utility/ChainAddresses.sol";
 
 /// @title InitializePoolsScript
 /// @notice Script to initialize ETH/USDC pools and add initial liquidity

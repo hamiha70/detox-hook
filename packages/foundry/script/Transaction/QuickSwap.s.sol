@@ -14,8 +14,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {HookLibrary} from "../src/libraries/HookLibrary.sol";
-import "../src/SwapRouterFixed.sol";
+import {HookLibrary} from "../../src/libraries/HookLibrary.sol";
+import "../../src/SwapRouterFixed.sol";
 
 /// @title QuickSwap
 /// @notice Uniswap V4 Swap Test Script for ETH/MockUSDC pool
@@ -180,7 +180,6 @@ contract QuickSwap is Script {
         } else {
             console.log("Pool not initialized (sqrtPriceX96 = 0)");
         }
-
         console.log("");
     }
 

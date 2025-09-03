@@ -19,19 +19,19 @@ import { PoolModifyLiquidityTest } from "@uniswap/v4-core/src/test/PoolModifyLiq
 import { PoolSwapTest } from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import { ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
-import { DetoxHookV2 } from "../src/DetoxHookV2.sol";
-import { ChainAddresses } from "./ChainAddresses.sol";
-import { SwapRouterFixed } from "../src/SwapRouterFixed.sol";
+import { DetoxHookV2 } from "../../src/DetoxHookV2.sol";
+import { ChainAddresses } from "../Utility/ChainAddresses.sol";
+import { SwapRouterFixed } from "../../src/SwapRouterFixed.sol";
 import { DevOpsTools } from "foundry-devops/src/DevOpsTools.sol";
-import { PoolParameters } from "./PoolParameters.sol";
-import { MockUSDC } from "./MockUSDC.sol";
+import { PoolParameters } from "../Pool/PoolParameters.sol";
+import { MockUSDC } from "../ERC20/MockUSDC/MockUSDC.sol";
 import { PoolManager } from "@uniswap/v4-core/src/PoolManager.sol";
-import { SafetyChecks } from "./SafetyChecks.sol";
-import { TokenHelpers } from "./TokenHelpers.sol";
-import { PriceRegistry } from "../src/PriceRegistry.sol";
-import { PublicRPCURL } from "./PublicRPCURL.sol";
+import { SafetyChecks } from "../Utility/SafetyChecks.sol";
+import { TokenHelpers } from "../ERC20/MockUSDC/TokenHelpers.sol";
+import { PriceRegistry } from "../../src/PriceRegistry.sol";
+import { PublicRPCURL } from "../Utility/PublicRPCURL.sol";
 import { EstimateDeploymentResources } from "./EstimateDeploymentResources.s.sol";
-import { HookLibrary } from "../src/libraries/HookLibrary.sol";
+import { HookLibrary } from "../../src/libraries/HookLibrary.sol";
 import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 /// @title Complete DetoxHook Deployment Script

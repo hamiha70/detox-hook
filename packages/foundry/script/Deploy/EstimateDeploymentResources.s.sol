@@ -3,8 +3,8 @@ pragma solidity ^0.8.26;
 
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/console.sol";
-import { PoolParameters } from "./PoolParameters.sol";
-import { HookLibrary } from "../src/libraries/HookLibrary.sol";
+import { PoolParameters } from "../Pool/PoolParameters.sol";
+import { HookLibrary } from "../../src/libraries/HookLibrary.sol";
 import { ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 /// @title Estimate Deployment Resources

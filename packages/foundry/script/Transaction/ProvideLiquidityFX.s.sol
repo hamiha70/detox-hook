@@ -21,6 +21,8 @@ contract ProvideLiquidity is Script {
     // Contract addresses
     address constant LIQUIDITY_ROUTER_ADDRESS =
         0x438E9E3cf5eB83D0c1Fe7Ce999159859bd97b34a;
+    address constant MOCKEURC_ADDRESS =
+        0x2E4D60D7e25eDd8A0e28Ef1370A7AD0e4E00525E;
     address constant MOCKUSDC_ADDRESS =
         0x9D5A68fDFEcc14683324640D5e835936422a47b1;
     address constant DETOX_HOOK_ADDRESS =
@@ -38,9 +40,9 @@ contract ProvideLiquidity is Script {
     // Pool configuration - EXACTLY as specified
     PoolKey poolKey =
         PoolKey({
-            currency0: Currency.wrap(address(0)),
+            currency0: Currency.wrap(MOCKEURC_ADDRESS),
             currency1: Currency.wrap(MOCKUSDC_ADDRESS),
-            fee: 300,
+            fee: 2000,
             tickSpacing: 40,
             hooks: IHooks(DETOX_HOOK_ADDRESS)
         });
@@ -49,9 +51,9 @@ contract ProvideLiquidity is Script {
     IPoolManager public immutable poolManager;
 
     // Liquidity parameters
-    int24 constant TICK_LOWER = -85160;
-    int24 constant TICK_UPPER = -77160;
-    int256 constant LIQUIDITY_DELTA = 800;
+    int24 constant TICK_LOWER = -1640;
+    int24 constant TICK_UPPER = -1480;
+    int256 constant LIQUIDITY_DELTA = 100000;
     bytes32 constant SALT =
         0x0000000000000000000000000000000000000000000000000000000000000001;
 
@@ -98,7 +100,10 @@ contract ProvideLiquidity is Script {
 
         // Display pool configuration
         console.log("=== Pool Configuration ===");
-        console.log("Currency0 (ETH):", Currency.unwrap(poolKey.currency0));
+        console.log(
+            "Currency0 (MockEURC):",
+            Currency.unwrap(poolKey.currency0)
+        );
         console.log(
             "Currency1 (MockUSDC):",
             Currency.unwrap(poolKey.currency1)
@@ -134,15 +139,20 @@ contract ProvideLiquidity is Script {
 
         // Check deployer balance
         uint256 providerEthBalance = liquidityProviderWallet.balance;
+        uint256 providerEurcBalance = IERC20(MOCKEURC_ADDRESS).balanceOf(
+            liquidityProviderWallet
+        );
         uint256 providerUsdcBalance = IERC20(MOCKUSDC_ADDRESS).balanceOf(
             liquidityProviderWallet
         );
         console.log("Provider ETH balance:", providerEthBalance);
+        console.log("Provider MockEURC balance:", providerEurcBalance);
         console.log("Provider MockUSDC balance:", providerUsdcBalance);
         require(
             providerEthBalance > 0.001 ether,
             "Insufficient ETH balance for transaction"
         );
+        require(providerEurcBalance > 0, "Insufficient MockEURC balance");
         require(providerUsdcBalance > 0, "Insufficient MockUSDC balance");
 
         // Create LiquidityRouter contract instance

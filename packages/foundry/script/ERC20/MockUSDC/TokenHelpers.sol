@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/console.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {MockUSDC} from "./MockUSDC.sol";
-import {SafetyChecks} from "./Utility/SafetyChecks.sol";
+import {SafetyChecks} from "../../Utility/SafetyChecks.sol";
 
 /// @title TokenHelpers
 /// @notice Utility library for MockUSDC-only token strategy across all environments

@@ -54,17 +54,50 @@
       },
       "status": "initialized",
       "transactionHash": "0xac87f1cdcacada907e8d0d18d03c3323061bb5ec576924626ea3885ed1657b20"
+    },
+    "pool3": {
+      "poolId": "0x1ecf189857c220df290be390b7fd24f7fc587146d757ecb81f6db11c7ca01cfe",
+      "description": "MockEURC/MockUSDC 0.03% fee pool (1 USDC = 0.86 EURC)",
+      "poolKey": {
+        "currency0": "0x2E4D60D7e25eDd8A0e28Ef1370A7AD0e4E00525E",
+        "currency1": "0x9D5A68fDFEcc14683324640D5e835936422a47b1",
+        "fee": 300,
+        "tickSpacing": 40,
+        "hooks": "0x25b9b40a53c9FAB2d7b2190eb406A22e2d738088"
+      },
+      "initialPrice": {
+        "sqrtPriceX96": "79228162514264337593543950336",
+        "tick": 1480,
+        "priceDescription": "1 MockUSDC = 0.86 MockEURC",
+        "fxRate": "EUR/USD ~ 0.86"
+      },
+      "liquidity": {
+        "status": "not_provided",
+        "description": "Pool initialized but no liquidity added yet"
+      },
+      "status": "initialized",
+      "transactionHash": "0xc5307fa62478c3ee99aa8684c4c6d134fd2aa6238792deaabb7e7082ee2e2ffb",
+      "deploymentDetails": {
+        "deployer": "0x00cA5716A51f8E48055d03fCadE8CFE0A463Bab6",
+        "gasUsed": 51823,
+        "gasPrice": "0.1 gwei",
+        "totalCost": "0.0000051823 ETH",
+        "blockNumber": 189279633
+      }
     }
   },
   "contracts": {
     "poolManager": "0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317",
     "usdc": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
     "modifyLiquidityRouter": "0x9A8ca723F5dcCb7926D00B71deC55c2fEa1F50f7",
-    "pythOracle": "0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF"
+    "pythOracle": "0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF",
+    "mockEURC": "0x2E4D60D7e25eDd8A0e28Ef1370A7AD0e4E00525E",
+    "mockUSDC": "0x9D5A68fDFEcc14683324640D5e835936422a47b1",
+    "detoxHookV2": "0x25b9b40a53c9FAB2d7b2190eb406A22e2d738088"
   },
   "deployment": {
     "totalGasCost": "0.0000577876 ETH",
     "transactions": 4,
     "lastUpdated": "2025-01-27T00:00:00Z"
   }
-} 
+}

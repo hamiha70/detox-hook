@@ -9,9 +9,9 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 
-import {SwapRouterFixed} from "../src/SwapRouterFixed.sol";
-import {ChainAddresses} from "./ChainAddresses.sol";
-import {PoolParameters} from "./PoolParameters.sol";
+import {SwapRouterFixed} from "../../src/SwapRouterFixed.sol";
+import {ChainAddresses} from "../Utility/ChainAddresses.sol";
+import {PoolParameters} from "../Pool/PoolParameters.sol";
 
 /// @title SwapRouterFixed Deployment Script
 /// @notice Standalone script to deploy SwapRouterFixed for DetoxHook demo

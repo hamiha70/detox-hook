@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/PoolStateViewer.sol";
+import "../../src/PoolStateViewer.sol";
 import "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 contract DeployPoolStateViewer is Script {

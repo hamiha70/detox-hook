@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import { ChainAddresses } from "./ChainAddresses.sol";
+import { ChainAddresses } from "../Utility/ChainAddresses.sol";
 
 /// @title FundDetoxHookScript
 /// @notice Simple script to fund DetoxHook with ETH

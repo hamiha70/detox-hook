@@ -12,7 +12,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
-import {ChainAddresses} from "../script/ChainAddresses.sol";
+import {ChainAddresses} from "../script/Utility/ChainAddresses.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PoolStateReader} from "../src/PoolStateReader.sol";
+import {PoolStateReader} from "../../src/PoolStateReader.sol";
 
 /**
  * @title TestPoolStateReader

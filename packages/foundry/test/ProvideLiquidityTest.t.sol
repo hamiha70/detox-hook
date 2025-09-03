@@ -12,7 +12,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../src/LiquidityRouter.sol";
-import "../script/MockUSDC.sol";
+import "../script/ERC20/MockUSDC/MockUSDC.sol";
 
 /// @title ProvideLiquidityTest
 /// @notice Comprehensive test for LiquidityRouter liquidity provision

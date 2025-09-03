@@ -65,6 +65,11 @@ class BalanceChecker:
             "decimals": 6,
             "symbol": "MockUSDC"
         },
+        "MockEURC": {
+            "address": "0x2E4D60D7e25eDd8A0e28Ef1370A7AD0e4E00525E", 
+            "decimals": 6,
+            "symbol": "MockEURC"
+        },
         # Add more tokens as needed
     }
     

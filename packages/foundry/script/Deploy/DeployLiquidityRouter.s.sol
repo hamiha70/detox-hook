@@ -3,8 +3,8 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import {LiquidityRouter} from "../src/LiquidityRouter.sol";
-import {ChainAddresses} from "./ChainAddresses.sol";
+import {LiquidityRouter} from "../../src/LiquidityRouter.sol";
+import {ChainAddresses} from "../Utility/ChainAddresses.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";

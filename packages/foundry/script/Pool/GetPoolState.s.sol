@@ -7,8 +7,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {HookLibrary} from "../src/libraries/HookLibrary.sol";
-import {ChainAddresses} from "./ChainAddresses.sol";
+import {HookLibrary} from "../../src/libraries/HookLibrary.sol";
+import {ChainAddresses} from "../Utility/ChainAddresses.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 /**
@@ -27,16 +27,16 @@ contract GetPoolState is Script {
         console.log("PoolManager:", address(POOL_MANAGER));
 
         // Real DetoxHook Pool 1: ETH/USDC 0.3% fee
-        //PoolKey memory pool1 = _getDetoxPool1Key();
-        //_displayPoolState("DetoxHook Pool 1 (ETH/USDC 0.3%)", pool1);
+        PoolKey memory pool1 = _getDetoxPool1Key();
+        _displayPoolState("Pool 1", pool1);
 
         // Real DetoxHook Pool 2: ETH/USDC 0.05% fee
-        //PoolKey memory pool2 = _getDetoxPool2Key();
-        // _displayPoolState("DetoxHook Pool 2 (ETH/USDC 0.05%)", pool2);
+        PoolKey memory pool2 = _getDetoxPool2Key();
+        _displayPoolState("Pool 2", pool2);
 
-        // Real DetoxHook Pool 3: ETH/MockUSDC 0.05% fee
+        // // Real DetoxHook Pool 3: ETH/MockUSDC 0.05% fee
         PoolKey memory pool3 = _getDetoxPool3Key();
-        _displayPoolState("DetoxHook Pool 3 (ETH/MockUSDC 0.05%)", pool3);
+        _displayPoolState("Pool 3", pool3);
     }
 
     function _displayPoolState(
@@ -66,43 +66,43 @@ contract GetPoolState is Script {
         console.log("  Liquidity:", liquidity);
 
         // Check for zero liquidity condition with helpful context
-        if (liquidity == 0) {
-            console.log("  [WARNING] Pool has ZERO liquidity!");
-            console.log(
-                "  [INFO] No swaps possible - pool needs liquidity first"
-            );
-            console.log(
-                "  [INFO] Price data below shows theoretical price if liquidity existed"
-            );
-        } else {
-            console.log(
-                "  [INFO] Pool has active liquidity - swaps should work"
-            );
-        }
+        // if (liquidity == 0) {
+        //     console.log("  [WARNING] Pool has ZERO liquidity!");
+        //     console.log(
+        //         "  [INFO] No swaps possible - pool needs liquidity first"
+        //     );
+        //     console.log(
+        //         "  [INFO] Price data below shows theoretical price if liquidity existed"
+        //     );
+        // } else {
+        //     console.log(
+        //         "  [INFO] Pool has active liquidity - swaps should work"
+        //     );
+        // }
 
         // Calculate human-readable price with enhanced safety checks
-        if (sqrtPriceX96 > 0) {
-            // Wrap in try-catch for maximum safety
-            try this._calculateAndDisplayPrice(sqrtPriceX96) {
-                // Success - price displayed in external function
-            } catch Error(string memory reason) {
-                console.log("  [ERROR] Price calculation failed:", reason);
-                console.log(
-                    "  [INFO] Raw sqrtPriceX96 value is available above"
-                );
-            } catch (bytes memory) {
-                console.log(
-                    "  [ERROR] Price calculation failed with low-level error"
-                );
-                console.log(
-                    "  [INFO] Raw sqrtPriceX96 value is available above"
-                );
-            }
-        } else {
-            console.log(
-                "  [ERROR] Invalid sqrtPriceX96 (zero) - pool not initialized"
-            );
-        }
+        // if (sqrtPriceX96 > 0) {
+        //     // Wrap in try-catch for maximum safety
+        //     try this._calculateAndDisplayPrice(sqrtPriceX96) {
+        //         // Success - price displayed in external function
+        //     } catch Error(string memory reason) {
+        //         console.log("  [ERROR] Price calculation failed:", reason);
+        //         console.log(
+        //             "  [INFO] Raw sqrtPriceX96 value is available above"
+        //         );
+        //     } catch (bytes memory) {
+        //         console.log(
+        //             "  [ERROR] Price calculation failed with low-level error"
+        //         );
+        //         console.log(
+        //             "  [INFO] Raw sqrtPriceX96 value is available above"
+        //         );
+        //     }
+        // } else {
+        //     console.log(
+        //         "  [ERROR] Invalid sqrtPriceX96 (zero) - pool not initialized"
+        //     );
+        // }
     }
 
     /// @notice External function to safely calculate and display price information
@@ -159,26 +159,30 @@ contract GetPoolState is Script {
     function _getDetoxPool1Key() internal pure returns (PoolKey memory) {
         return
             PoolKey({
-                currency0: Currency.wrap(address(0)), // ETH
-                currency1: Currency.wrap(
-                    0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+                currency0: Currency.wrap(
+                    0x2E4D60D7e25eDd8A0e28Ef1370A7AD0e4E00525E
                 ), // USDC
-                fee: 3000, // 0.3%
-                tickSpacing: 60,
-                hooks: IHooks(0x444F320aA27e73e1E293c14B22EfBDCbce0e0088) // DetoxHook
+                currency1: Currency.wrap(
+                    0x9D5A68fDFEcc14683324640D5e835936422a47b1
+                ), // USDC
+                fee: 2000, // 0.3%
+                tickSpacing: 40,
+                hooks: IHooks(address(0)) // DetoxHook
             });
     }
 
     function _getDetoxPool2Key() internal pure returns (PoolKey memory) {
         return
             PoolKey({
-                currency0: Currency.wrap(address(0)), // ETH
-                currency1: Currency.wrap(
-                    0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+                currency0: Currency.wrap(
+                    0x2E4D60D7e25eDd8A0e28Ef1370A7AD0e4E00525E
                 ), // USDC
-                fee: 500, // 0.05%
-                tickSpacing: 10,
-                hooks: IHooks(0x444F320aA27e73e1E293c14B22EfBDCbce0e0088) // DetoxHook
+                currency1: Currency.wrap(
+                    0x9D5A68fDFEcc14683324640D5e835936422a47b1
+                ), // USDC
+                fee: 2000,
+                tickSpacing: 40,
+                hooks: IHooks(0x25b9b40a53c9FAB2d7b2190eb406A22e2d738088) // DetoxHook
             });
     }
 
