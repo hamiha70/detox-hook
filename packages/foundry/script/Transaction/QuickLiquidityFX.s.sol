@@ -79,6 +79,9 @@ contract QuickLiquidityFX is Script {
         // 3. LIQUIDITY PROVIDER VERIFICATION
         _verifyLiquidityProvider();
 
+        // 4. APPROVALS AND ALLOWANCES
+        _handleApprovalsAndAllowances();
+
         console.log("");
         console.log(
             "[SUCCESS] QuickLiquidityFX validation completed successfully!"
@@ -306,5 +309,238 @@ contract QuickLiquidityFX is Script {
             )
         );
         console.log("  [PASS]", contractName, "at:", contractAddress);
+    }
+
+    /// @notice Handle approvals and allowances for MockEURC and MockUSDC spending
+    /// @dev This function manages token approvals for PoolModifyLiquidityTest and PoolManager contracts
+    function _handleApprovalsAndAllowances() internal {
+        console.log("");
+        console.log("=== 5. Approvals and Allowances ===");
+
+        // Load environment variables
+        address liquidityProviderWallet;
+        try vm.envAddress("LIQUIDITY_PROVIDER_WALLET") returns (
+            address wallet
+        ) {
+            liquidityProviderWallet = wallet;
+        } catch {
+            console.log(
+                "[ERROR] LIQUIDITY_PROVIDER_WALLET environment variable not set"
+            );
+            return;
+        }
+
+        // Check if we have a private key for transactions
+        uint256 liquidityProviderPrivateKey;
+        bool canExecuteTransactions = false;
+        try vm.envUint("LIQUIDITY_PROVIDER_PRIVATE_KEY") returns (
+            uint256 privateKey
+        ) {
+            liquidityProviderPrivateKey = privateKey;
+            canExecuteTransactions = true;
+        } catch {
+            console.log(
+                "[INFO] LIQUIDITY_PROVIDER_PRIVATE_KEY not set - will only display current allowances"
+            );
+        }
+
+        // Display current allowances
+        _displayCurrentAllowances(liquidityProviderWallet);
+
+        if (canExecuteTransactions) {
+            console.log("");
+            console.log("=== Token Approval Operations ===");
+
+            // Start broadcasting transactions
+            vm.startBroadcast(liquidityProviderPrivateKey);
+
+            // Approve MockEURC for PoolModifyLiquidityTest
+            _approveTokenSpending(
+                MOCKEURC_ADDRESS,
+                POOL_MODIFY_LIQUIDITY_TEST_ADDRESS,
+                "MockEURC",
+                "PoolModifyLiquidityTest"
+            );
+
+            // Approve MockUSDC for PoolModifyLiquidityTest
+            _approveTokenSpending(
+                MOCKUSDC_ADDRESS,
+                POOL_MODIFY_LIQUIDITY_TEST_ADDRESS,
+                "MockUSDC",
+                "PoolModifyLiquidityTest"
+            );
+
+            // Approve MockEURC for PoolManager
+            _approveTokenSpending(
+                MOCKEURC_ADDRESS,
+                POOL_MANAGER_ADDRESS,
+                "MockEURC",
+                "PoolManager"
+            );
+
+            // Approve MockUSDC for PoolManager
+            _approveTokenSpending(
+                MOCKUSDC_ADDRESS,
+                POOL_MANAGER_ADDRESS,
+                "MockUSDC",
+                "PoolManager"
+            );
+
+            vm.stopBroadcast();
+
+            console.log("");
+            console.log("[SUCCESS] All token approvals completed");
+
+            // Display updated allowances after approvals
+            console.log("");
+            console.log("=== Updated Allowances (Post-Approval) ===");
+            _displayCurrentAllowances(liquidityProviderWallet);
+        } else {
+            console.log("");
+            console.log(
+                "[INFO] To execute approvals, set LIQUIDITY_PROVIDER_PRIVATE_KEY environment variable"
+            );
+            console.log(
+                "[INFO] Run with --broadcast flag to execute actual transactions"
+            );
+        }
+    }
+
+    /// @notice Display current allowances for the liquidity provider wallet
+    /// @param wallet The wallet address to check allowances for
+    function _displayCurrentAllowances(address wallet) internal view {
+        console.log("");
+        console.log("Current allowances for wallet:", wallet);
+
+        // MockEURC allowances
+        uint256 mockEurcAllowancePoolTest = IERC20(MOCKEURC_ADDRESS).allowance(
+            wallet,
+            POOL_MODIFY_LIQUIDITY_TEST_ADDRESS
+        );
+        uint256 mockEurcAllowancePoolManager = IERC20(MOCKEURC_ADDRESS)
+            .allowance(wallet, POOL_MANAGER_ADDRESS);
+
+        console.log("MockEURC allowances:");
+        console.log("  PoolModifyLiquidityTest:", mockEurcAllowancePoolTest);
+        console.log("  PoolManager:", mockEurcAllowancePoolManager);
+
+        // MockUSDC allowances
+        uint256 mockUsdcAllowancePoolTest = IERC20(MOCKUSDC_ADDRESS).allowance(
+            wallet,
+            POOL_MODIFY_LIQUIDITY_TEST_ADDRESS
+        );
+        uint256 mockUsdcAllowancePoolManager = IERC20(MOCKUSDC_ADDRESS)
+            .allowance(wallet, POOL_MANAGER_ADDRESS);
+
+        console.log("MockUSDC allowances:");
+        console.log("  PoolModifyLiquidityTest:", mockUsdcAllowancePoolTest);
+        console.log("  PoolManager:", mockUsdcAllowancePoolManager);
+
+        // Verify allowances meet requirements
+        _verifyAllowanceRequirements(
+            mockEurcAllowancePoolTest,
+            mockEurcAllowancePoolManager,
+            mockUsdcAllowancePoolTest,
+            mockUsdcAllowancePoolManager
+        );
+    }
+
+    /// @notice Approve token spending for a specific spender
+    /// @param tokenAddress The token contract address
+    /// @param spenderAddress The spender contract address
+    /// @param tokenName The token name for logging
+    /// @param spenderName The spender name for logging
+    function _approveTokenSpending(
+        address tokenAddress,
+        address spenderAddress,
+        string memory tokenName,
+        string memory spenderName
+    ) internal {
+        console.log("Approving", tokenName, "spending for", spenderName);
+
+        try
+            IERC20(tokenAddress).approve(spenderAddress, type(uint256).max)
+        returns (bool success) {
+            if (success) {
+                console.log(
+                    "  [SUCCESS]",
+                    tokenName,
+                    "approved for",
+                    spenderName
+                );
+            } else {
+                console.log(
+                    "  [ERROR]",
+                    tokenName,
+                    "approval failed for",
+                    spenderName
+                );
+            }
+        } catch Error(string memory reason) {
+            console.log("  [ERROR] Approval failed:", reason);
+        } catch (bytes memory) {
+            console.log("  [ERROR] Approval failed with unknown error");
+        }
+    }
+
+    /// @notice Verify that allowances meet the requirements for liquidity operations
+    /// @param mockEurcPoolTest MockEURC allowance for PoolModifyLiquidityTest
+    /// @param mockEurcPoolManager MockEURC allowance for PoolManager
+    /// @param mockUsdcPoolTest MockUSDC allowance for PoolModifyLiquidityTest
+    /// @param mockUsdcPoolManager MockUSDC allowance for PoolManager
+    function _verifyAllowanceRequirements(
+        uint256 mockEurcPoolTest,
+        uint256 mockEurcPoolManager,
+        uint256 mockUsdcPoolTest,
+        uint256 mockUsdcPoolManager
+    ) internal view {
+        console.log("");
+        console.log("Allowance verification:");
+
+        // Define minimum required allowance (should be high for liquidity operations)
+        uint256 minRequiredAllowance = 1e24; // Very high allowance for unlimited operations
+
+        bool mockEurcPoolTestOk = mockEurcPoolTest >= minRequiredAllowance;
+        bool mockEurcPoolManagerOk = mockEurcPoolManager >=
+            minRequiredAllowance;
+        bool mockUsdcPoolTestOk = mockUsdcPoolTest >= minRequiredAllowance;
+        bool mockUsdcPoolManagerOk = mockUsdcPoolManager >=
+            minRequiredAllowance;
+
+        console.log(
+            "  MockEURC -> PoolModifyLiquidityTest:",
+            mockEurcPoolTestOk ? "SUFFICIENT" : "INSUFFICIENT"
+        );
+        console.log(
+            "  MockEURC -> PoolManager:",
+            mockEurcPoolManagerOk ? "SUFFICIENT" : "INSUFFICIENT"
+        );
+        console.log(
+            "  MockUSDC -> PoolModifyLiquidityTest:",
+            mockUsdcPoolTestOk ? "SUFFICIENT" : "INSUFFICIENT"
+        );
+        console.log(
+            "  MockUSDC -> PoolManager:",
+            mockUsdcPoolManagerOk ? "SUFFICIENT" : "INSUFFICIENT"
+        );
+
+        bool allAllowancesOk = mockEurcPoolTestOk &&
+            mockEurcPoolManagerOk &&
+            mockUsdcPoolTestOk &&
+            mockUsdcPoolManagerOk;
+
+        if (allAllowancesOk) {
+            console.log(
+                "  [PASS] All allowances meet requirements for liquidity operations"
+            );
+        } else {
+            console.log(
+                "  [WARNING] Some allowances are insufficient - approvals may be needed"
+            );
+            console.log(
+                "  [INFO] Required minimum allowance:",
+                minRequiredAllowance
+            );
+        }
     }
 }

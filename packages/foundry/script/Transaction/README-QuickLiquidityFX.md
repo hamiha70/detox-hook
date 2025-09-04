@@ -12,6 +12,7 @@ This script validates and tests the complete liquidity provision setup by perfor
 2. **Network and Contract Safety Validations** 
 3. **Pool State Analysis**
 4. **Liquidity Provider Verification**
+5. **Approvals and Allowances Management**
 
 ## 🔧 Script Requirements
 
@@ -129,6 +130,21 @@ forge script script/Transaction/QuickLiquidityFX.s.sol \
 - ✅ Fetch MockUSDC balance
 - ✅ Validate sufficient balances for liquidity provision
 
+### ✅ 5. Approvals and Allowances Management
+
+**Current Allowance Display:**
+- ✅ Show current MockEURC allowances for PoolModifyLiquidityTest and PoolManager
+- ✅ Show current MockUSDC allowances for PoolModifyLiquidityTest and PoolManager
+- ✅ Verify allowances meet minimum requirements for liquidity operations
+
+**Token Approval Operations:**
+- ✅ Approve MockEURC spending for PoolModifyLiquidityTest contract
+- ✅ Approve MockUSDC spending for PoolModifyLiquidityTest contract
+- ✅ Approve MockEURC spending for PoolManager contract
+- ✅ Approve MockUSDC spending for PoolManager contract
+- ✅ Display updated allowances after approvals
+- ✅ Verify all allowances are sufficient for liquidity operations
+
 ## 📊 Expected Output
 
 ### Successful Validation Output
@@ -195,6 +211,50 @@ Balance validation:
   Sufficient MockUSDC: YES
 [PASS] Liquidity provider has sufficient balances
 
+=== 5. Approvals and Allowances ===
+
+Current allowances for wallet: 0x...
+MockEURC allowances:
+  PoolModifyLiquidityTest: 0
+  PoolManager: 0
+MockUSDC allowances:
+  PoolModifyLiquidityTest: 0
+  PoolManager: 0
+
+Allowance verification:
+  MockEURC -> PoolModifyLiquidityTest: INSUFFICIENT
+  MockEURC -> PoolManager: INSUFFICIENT
+  MockUSDC -> PoolModifyLiquidityTest: INSUFFICIENT
+  MockUSDC -> PoolManager: INSUFFICIENT
+  [WARNING] Some allowances are insufficient - approvals may be needed
+
+=== Token Approval Operations ===
+Approving MockEURC spending for PoolModifyLiquidityTest
+  [SUCCESS] MockEURC approved for PoolModifyLiquidityTest
+Approving MockUSDC spending for PoolModifyLiquidityTest
+  [SUCCESS] MockUSDC approved for PoolModifyLiquidityTest
+Approving MockEURC spending for PoolManager
+  [SUCCESS] MockEURC approved for PoolManager
+Approving MockUSDC spending for PoolManager
+  [SUCCESS] MockUSDC approved for PoolManager
+
+[SUCCESS] All token approvals completed
+
+=== Updated Allowances (Post-Approval) ===
+MockEURC allowances:
+  PoolModifyLiquidityTest: 115792089237316195423570985008687907853269984665640564039457584007913129639935
+  PoolManager: 115792089237316195423570985008687907853269984665640564039457584007913129639935
+MockUSDC allowances:
+  PoolModifyLiquidityTest: 115792089237316195423570985008687907853269984665640564039457584007913129639935
+  PoolManager: 115792089237316195423570985008687907853269984665640564039457584007913129639935
+
+Allowance verification:
+  MockEURC -> PoolModifyLiquidityTest: SUFFICIENT
+  MockEURC -> PoolManager: SUFFICIENT
+  MockUSDC -> PoolModifyLiquidityTest: SUFFICIENT
+  MockUSDC -> PoolManager: SUFFICIENT
+  [PASS] All allowances meet requirements for liquidity operations
+
 [SUCCESS] QuickLiquidityFX validation completed successfully!
 Pool is ready for liquidity provision operations.
 ```
@@ -230,6 +290,18 @@ MockEURC contract not found at address
 [WARNING] Liquidity provider may have insufficient balances
 ```
 **Solution**: Ensure the liquidity provider wallet has sufficient MockEURC, MockUSDC, and ETH for gas.
+
+### Insufficient Allowances
+```
+[WARNING] Some allowances are insufficient - approvals may be needed
+```
+**Solution**: The script will automatically approve tokens when run with a private key and `--broadcast` flag.
+
+### Approval Transaction Failed
+```
+[ERROR] MockEURC approval failed for PoolModifyLiquidityTest
+```
+**Solution**: Ensure the wallet has sufficient ETH for gas and the token contract supports the `approve` function.
 
 ## 🔗 Related Scripts
 
