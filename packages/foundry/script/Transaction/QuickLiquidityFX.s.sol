@@ -58,7 +58,7 @@ contract QuickLiquidityFX is Script {
     // ===== LIQUIDITY PARAMETERS =====
     int24 constant TICK_LOWER = -1640;
     int24 constant TICK_UPPER = -1480;
-    int256 constant LIQUIDITY_DELTA = 1e18; // Standard Uniswap V4 liquidity amount
+    int256 constant LIQUIDITY_DELTA = 1e9; // Very small liquidity amount for testing (1K with 6 decimals)
     bytes32 constant SALT =
         0x0000000000000000000000000000000000000000000000000000000000000001;
 
