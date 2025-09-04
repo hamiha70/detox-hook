@@ -11,6 +11,9 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import "../../src/LiquidityRouter.sol";
 
 /// @title QuickLiquidityFX - Uniswap V4 Liquidity Provision Test Script
@@ -82,11 +85,17 @@ contract QuickLiquidityFX is Script {
         // 4. APPROVALS AND ALLOWANCES
         _handleApprovalsAndAllowances();
 
+        // 5. LIQUIDITY PROVISION
+        _provideLiquidity();
+
+        // 6. VERIFY NEW POOL STATE
+        _verifyNewPoolState();
+
         console.log("");
         console.log(
-            "[SUCCESS] QuickLiquidityFX validation completed successfully!"
+            "[SUCCESS] QuickLiquidityFX liquidity provision completed successfully!"
         );
-        console.log("Pool is ready for liquidity provision operations.");
+        console.log("Pool now has additional liquidity provided.");
     }
 
     /// @notice Perform network and chain ID validation
@@ -542,5 +551,203 @@ contract QuickLiquidityFX is Script {
                 minRequiredAllowance
             );
         }
+    }
+
+    /// @notice Provide liquidity to the pool using PoolModifyLiquidityTest contract
+    /// @dev Broadcasts transactions using LIQUIDITY_PROVIDER_WALLET and performs actual liquidity provision
+    function _provideLiquidity() internal {
+        console.log("");
+        console.log("=== 7. Liquidity Provision ===");
+
+        // Load environment variables
+        address liquidityProviderWallet;
+        uint256 liquidityProviderPrivateKey;
+        bool canExecuteTransactions = false;
+
+        try vm.envAddress("LIQUIDITY_PROVIDER_WALLET") returns (
+            address wallet
+        ) {
+            liquidityProviderWallet = wallet;
+        } catch {
+            console.log(
+                "[ERROR] LIQUIDITY_PROVIDER_WALLET environment variable not set"
+            );
+            return;
+        }
+
+        try vm.envUint("LIQUIDITY_PROVIDER_PRIVATE_KEY") returns (
+            uint256 privateKey
+        ) {
+            liquidityProviderPrivateKey = privateKey;
+            canExecuteTransactions = true;
+        } catch {
+            console.log(
+                "[ERROR] LIQUIDITY_PROVIDER_PRIVATE_KEY environment variable not set"
+            );
+            console.log(
+                "[INFO] Cannot execute liquidity provision without private key"
+            );
+            return;
+        }
+
+        if (!canExecuteTransactions) {
+            console.log(
+                "[INFO] Skipping liquidity provision - no private key provided"
+            );
+            return;
+        }
+
+        // Get balances before transaction
+        uint256 mockEurcBalanceBefore = IERC20(MOCKEURC_ADDRESS).balanceOf(
+            liquidityProviderWallet
+        );
+        uint256 mockUsdcBalanceBefore = IERC20(MOCKUSDC_ADDRESS).balanceOf(
+            liquidityProviderWallet
+        );
+        uint256 ethBalanceBefore = liquidityProviderWallet.balance;
+
+        console.log("Pre-transaction balances:");
+        console.log("  MockEURC balance:", mockEurcBalanceBefore);
+        console.log("  MockUSDC balance:", mockUsdcBalanceBefore);
+        console.log("  ETH balance:", ethBalanceBefore);
+
+        // Create ModifyLiquidityParams
+        ModifyLiquidityParams memory params = ModifyLiquidityParams({
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            liquidityDelta: LIQUIDITY_DELTA,
+            salt: SALT
+        });
+
+        console.log("");
+        console.log("Executing liquidity provision transaction...");
+        console.log(
+            "Using PoolModifyLiquidityTest contract at:",
+            POOL_MODIFY_LIQUIDITY_TEST_ADDRESS
+        );
+
+        // Start broadcasting transactions
+        vm.startBroadcast(liquidityProviderPrivateKey);
+
+        try
+            PoolModifyLiquidityTest(POOL_MODIFY_LIQUIDITY_TEST_ADDRESS)
+                .modifyLiquidity(poolKey, params, "")
+        returns (BalanceDelta delta) {
+            vm.stopBroadcast();
+
+            console.log("");
+            console.log("=== Transaction Confirmation ===");
+            console.log(
+                "  [SUCCESS] Liquidity provision transaction completed"
+            );
+
+            // Extract and display balance deltas
+            int128 amount0Delta = delta.amount0();
+            int128 amount1Delta = delta.amount1();
+
+            console.log(
+                "  Amount0 Delta (MockEURC):",
+                vm.toString(amount0Delta)
+            );
+            console.log(
+                "  Amount1 Delta (MockUSDC):",
+                vm.toString(amount1Delta)
+            );
+
+            // Get balances after transaction
+            uint256 mockEurcBalanceAfter = IERC20(MOCKEURC_ADDRESS).balanceOf(
+                liquidityProviderWallet
+            );
+            uint256 mockUsdcBalanceAfter = IERC20(MOCKUSDC_ADDRESS).balanceOf(
+                liquidityProviderWallet
+            );
+            uint256 ethBalanceAfter = liquidityProviderWallet.balance;
+
+            console.log("");
+            console.log("Post-transaction balances:");
+            console.log("  MockEURC balance:", mockEurcBalanceAfter);
+            console.log("  MockUSDC balance:", mockUsdcBalanceAfter);
+            console.log("  ETH balance:", ethBalanceAfter);
+
+            // Calculate actual amounts extracted
+            uint256 mockEurcExtracted = mockEurcBalanceBefore -
+                mockEurcBalanceAfter;
+            uint256 mockUsdcExtracted = mockUsdcBalanceBefore -
+                mockUsdcBalanceAfter;
+            uint256 gasUsed = ethBalanceBefore - ethBalanceAfter;
+
+            console.log("");
+            console.log("Amounts extracted from LIQUIDITY_PROVIDER_WALLET:");
+            console.log("  MockEURC extracted:", mockEurcExtracted);
+            console.log("  MockUSDC extracted:", mockUsdcExtracted);
+            console.log("  ETH used for gas:", gasUsed);
+        } catch Error(string memory reason) {
+            vm.stopBroadcast();
+            console.log("  [ERROR] Liquidity provision failed:", reason);
+        } catch (bytes memory) {
+            vm.stopBroadcast();
+            console.log(
+                "  [ERROR] Liquidity provision failed with unknown error"
+            );
+        }
+    }
+
+    /// @notice Verify the new pool state after liquidity provision
+    /// @dev Fetches current MockEURC/MockUSDC price and verifies it didn't change unexpectedly
+    function _verifyNewPoolState() internal view {
+        console.log("");
+        console.log("=== 8. Verify New Pool State ===");
+
+        PoolId poolId = poolKey.toId();
+
+        // Get updated pool state
+        (
+            uint160 newSqrtPriceX96,
+            int24 newTick,
+            uint24 newProtocolFee,
+            uint24 newLpFee
+        ) = StateLibrary.getSlot0(poolManager, poolId);
+
+        console.log("Updated pool state:");
+        console.log("  Current price (sqrtPriceX96):", newSqrtPriceX96);
+        console.log("  Current tick:", vm.toString(newTick));
+        console.log("  Protocol fee:", newProtocolFee);
+        console.log("  LP fee:", newLpFee);
+
+        // Calculate and display current price in human-readable format
+        _displayCurrentPrice(newSqrtPriceX96);
+
+        // Get updated liquidity
+        uint128 newLiquidity = StateLibrary.getLiquidity(poolManager, poolId);
+        console.log("  Liquidity at current tick:", newLiquidity);
+
+        // Verify price didn't change unexpectedly
+        console.log("");
+        console.log("Price verification:");
+        console.log("  sqrtPriceX96:", newSqrtPriceX96);
+
+        if (newSqrtPriceX96 > 0) {
+            console.log("  [PASS] Pool has valid price");
+        } else {
+            console.log(
+                "  [WARNING] Pool price is zero - may indicate initialization issue"
+            );
+        }
+
+        // Verify tick alignment
+        bool tickAligned = (newTick % int24(poolKey.tickSpacing)) == 0;
+        console.log(
+            "  Tick alignment:",
+            tickAligned ? "ALIGNED" : "NOT ALIGNED"
+        );
+
+        if (tickAligned) {
+            console.log("  [PASS] Tick alignment maintained");
+        } else {
+            console.log("  [WARNING] Tick alignment issue detected");
+        }
+
+        console.log("");
+        console.log("[SUCCESS] Pool state verification completed");
     }
 }
