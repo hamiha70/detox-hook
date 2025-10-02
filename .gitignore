@@ -4,6 +4,7 @@ node_modules
 packages/foundry/out
 packages/foundry/lib
 packages/foundry/cache
+packages/foundry/.security_analysis_private
 
 # yarn
 .yarn/*
